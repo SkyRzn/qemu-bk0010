@@ -1,0 +1,2 @@
+config K1801VM1
+    bool
