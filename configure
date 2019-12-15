@@ -7638,6 +7638,8 @@ case "$target_name" in
   hppa)
     mttcg="yes"
   ;;
+  k1801vm1)
+  ;;
   lm32)
   ;;
   m68k)
