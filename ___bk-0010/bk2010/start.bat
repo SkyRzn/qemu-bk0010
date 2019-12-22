@@ -1,0 +1,1 @@
+@java -jar bk2010-0.5-release.jar

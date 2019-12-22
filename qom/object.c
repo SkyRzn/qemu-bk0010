@@ -642,6 +642,7 @@ static Object *object_new_with_type(Type type)
 Object *object_new(const char *typename)
 {
     TypeImpl *ti = type_get_by_name(typename);
+    printf("###########@@@@@@@ %s: %p\n", typename, ti);
 
     return object_new_with_type(ti);
 }
@@ -967,7 +968,7 @@ static void object_class_foreach_tramp(gpointer key, gpointer value,
         return;
     }
 
-    if (data->implements_type && 
+    if (data->implements_type &&
         !object_class_dynamic_cast(k, data->implements_type)) {
         return;
     }
@@ -1259,7 +1260,9 @@ void object_property_get(Object *obj, Visitor *v, const char *name,
 void object_property_set(Object *obj, Visitor *v, const char *name,
                          Error **errp)
 {
+    printf("----------- 0 %p\n", obj);
     ObjectProperty *prop = object_property_find(obj, name, errp);
+    printf("----------- 1 %p\n", prop);
     if (prop == NULL) {
         return;
     }
@@ -1267,7 +1270,11 @@ void object_property_set(Object *obj, Visitor *v, const char *name,
     if (!prop->set) {
         error_setg(errp, QERR_PERMISSION_DENIED);
     } else {
+        printf("----------- 2 \n");
+        printf("----------- 3 %p %p %s %p\n", obj, v, name, prop->opaque);
+
         prop->set(obj, v, name, prop->opaque, errp);
+        printf("----------- 4 \n");
     }
 }
 
