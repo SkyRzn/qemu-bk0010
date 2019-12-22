@@ -22,133 +22,101 @@
  * THE SOFTWARE.
  */
 
+/*
+ * QEMU AVR CPU
+ *
+ * Copyright (c) 2016 Michael Rolnik
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, see
+ * <http://www.gnu.org/licenses/lgpl-2.1.html>
+ */
+
+/*
+ *  NOTE:
+ *      This is not a real AVR board !!! This is an example !!!
+ *
+ *        This example can be used to build a real AVR board.
+ *
+ *      This example board loads provided binary file into flash memory and
+ *      executes it from 0x00000000 address in the code memory space.
+ *
+ *      Currently used for AVR CPU validation
+ *
+ */
+
 #include "qemu/osdep.h"
-#include "qemu/error-report.h"
 #include "qapi/error.h"
+#include "qemu-common.h"
 #include "cpu.h"
-#include "hw/sysbus.h"
-#include "net/net.h"
-#include "sysemu/reset.h"
+#include "hw/hw.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/qtest.h"
+#include "ui/console.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
-#include "hw/char/serial.h"
+#include "qemu/error-report.h"
 #include "exec/address-spaces.h"
-#include "elf.h"
+#include "include/hw/sysbus.h"
 
-#define PHYS_MEM_BASE 0x80000000
-#define FIRMWARE_BASE 0x1000
-#define FIRMWARE_SIZE (128 * 0x1000)
 
-typedef struct {
-    uint64_t ram_size;
-    const char *kernel_filename;
-    const char *kernel_cmdline;
-    const char *initrd_filename;
-} LoaderParams;
+#define RAM_BASE   00000
+#define RAM_SIZE   0100000
 
-static void load_kernel(MoxieCPU *cpu, LoaderParams *loader_params)
+#define ROM_BASE   0100000
+#define ROM_SIZE   0100000
+
+#define ROM_DEFAULT_FILENAME    "monit10.rom"
+
+
+static void bk0010_init(MachineState *machine)
 {
-    uint64_t entry, kernel_low, kernel_high;
-    int64_t initrd_size;
-    long kernel_size;
-    ram_addr_t initrd_offset;
+    MemoryRegion *address_space, *ram, *rom;
+    K1801VM1CPU *cpu ATTRIBUTE_UNUSED;
+    const char *firmware = NULL;
+    const char *filename;
 
-    kernel_size = load_elf(loader_params->kernel_filename,  NULL, NULL, NULL,
-                           &entry, &kernel_low, &kernel_high, 1, EM_MOXIE,
-                           0, 0);
+    cpu = K1801VM1_CPU(cpu_create(machine->cpu_type));
 
-    if (kernel_size <= 0) {
-        error_report("could not load kernel '%s'",
-                     loader_params->kernel_filename);
-        exit(1);
-    }
+    address_space = get_system_memory();
 
-    /* load initrd */
-    initrd_size = 0;
-    initrd_offset = 0;
-    if (loader_params->initrd_filename) {
-        initrd_size = get_image_size(loader_params->initrd_filename);
-        if (initrd_size > 0) {
-            initrd_offset = (kernel_high + ~TARGET_PAGE_MASK)
-              & TARGET_PAGE_MASK;
-            if (initrd_offset + initrd_size > loader_params->ram_size) {
-                error_report("memory too small for initial ram disk '%s'",
-                             loader_params->initrd_filename);
-                exit(1);
-            }
-            initrd_size = load_image_targphys(loader_params->initrd_filename,
-                                              initrd_offset,
-                                              ram_size);
-        }
-        if (initrd_size == (target_ulong)-1) {
-            error_report("could not load initial ram disk '%s'",
-                         loader_params->initrd_filename);
-            exit(1);
-        }
-    }
-}
+    ram = g_new(MemoryRegion, 1);
+    memory_region_allocate_system_memory(ram, NULL, "bk0010.ram", RAM_SIZE);
+    memory_region_add_subregion(address_space, RAM_BASE, ram);
 
-static void main_cpu_reset(void *opaque)
-{
-    MoxieCPU *cpu = opaque;
+    rom = g_new(MemoryRegion, 1);
+    memory_region_allocate_system_memory(rom, NULL, "bk0010.rom", ROM_SIZE);
+    memory_region_add_subregion(address_space, ROM_BASE, rom);
 
-    cpu_reset(CPU(cpu));
-}
+    if (machine->firmware)
+        firmware = machine->firmware;
 
-static void moxiesim_init(MachineState *machine)
-{
-    MoxieCPU *cpu = NULL;
-    ram_addr_t ram_size = machine->ram_size;
-    const char *kernel_filename = machine->kernel_filename;
-    const char *kernel_cmdline = machine->kernel_cmdline;
-    const char *initrd_filename = machine->initrd_filename;
-    CPUMoxieState *env;
-    MemoryRegion *address_space_mem = get_system_memory();
-    MemoryRegion *ram = g_new(MemoryRegion, 1);
-    MemoryRegion *rom = g_new(MemoryRegion, 1);
-    hwaddr ram_base = 0x200000;
-    LoaderParams loader_params;
+    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, firmware);
+    if (!filename)
+        filename = ROM_DEFAULT_FILENAME;
 
-    /* Init CPUs. */
-    cpu = MOXIE_CPU(cpu_create(machine->cpu_type));
-    env = &cpu->env;
-
-    qemu_register_reset(main_cpu_reset, cpu);
-
-    /* Allocate RAM. */
-    memory_region_init_ram(ram, NULL, "moxiesim.ram", ram_size, &error_fatal);
-    memory_region_add_subregion(address_space_mem, ram_base, ram);
-
-    memory_region_init_ram(rom, NULL, "moxie.rom", FIRMWARE_SIZE, &error_fatal);
-    memory_region_add_subregion(get_system_memory(), FIRMWARE_BASE, rom);
-
-    if (kernel_filename) {
-        loader_params.ram_size = ram_size;
-        loader_params.kernel_filename = kernel_filename;
-        loader_params.kernel_cmdline = kernel_cmdline;
-        loader_params.initrd_filename = initrd_filename;
-        load_kernel(cpu, &loader_params);
-    }
-    if (bios_name) {
-        if (load_image_targphys(bios_name, FIRMWARE_BASE, FIRMWARE_SIZE) < 0) {
-            error_report("Failed to load firmware '%s'", bios_name);
-        }
-    }
-
-    /* A single 16450 sits at offset 0x3f8.  */
-    if (serial_hd(0)) {
-        serial_mm_init(address_space_mem, 0x3f8, 0, env->irq[4],
-                       8000000/16, serial_hd(0), DEVICE_LITTLE_ENDIAN);
+    if (load_image_targphys(filename, ROM_BASE, ROM_SIZE) < 0) {
+        fprintf(stderr, "Error ROM loading: %s\n", filename);
+        exit(-1);
     }
 }
 
 static void bk0010_machine_init(MachineClass *mc)
 {
-    mc->desc = "BK-0010 simulator platform";
+    mc->desc = "BK-0010 board";
     mc->init = bk0010_init;
     mc->is_default = 1;
-    mc->default_cpu_type = MOXIE_CPU_TYPE_NAME("K1801VM1");
+    mc->default_cpu_type = "k1801vm1";
 }
 
-DEFINE_MACHINE("bk-0010", bk0010_machine_init)
+DEFINE_MACHINE("bk0010", bk0010_machine_init)

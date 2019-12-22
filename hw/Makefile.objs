@@ -19,6 +19,7 @@ devices-dirs-y += intc/
 devices-dirs-$(CONFIG_IPACK) += ipack/
 devices-dirs-$(CONFIG_IPMI) += ipmi/
 devices-dirs-y += isa/
+devices-dirs-y += k1801vm1/
 devices-dirs-y += misc/
 devices-dirs-y += net/
 devices-dirs-y += rdma/

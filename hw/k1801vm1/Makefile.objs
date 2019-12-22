@@ -1,2 +1,2 @@
 # k1801vm1 boards
-obj-$(CONFIG_MOXIESIM) += bk-0010.o
+obj-y += bk-0010.o

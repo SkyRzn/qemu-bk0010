@@ -20,14 +20,19 @@
 #ifndef _K1801VM1_CPU_H_
 #define _K1801VM1_CPU_H_
 
+
 #include "exec/cpu-defs.h"
 
-#define MOXIE_EX_DIV0        0
-#define MOXIE_EX_BAD         1
-#define MOXIE_EX_IRQ         2
-#define MOXIE_EX_SWI         3
-#define MOXIE_EX_MMU_MISS    4
-#define MOXIE_EX_BREAK      16
+
+// TODO change exception codes
+#define K1801VM1_EX_DIV0        0
+#define K1801VM1_EX_BAD         1
+#define K1801VM1_EX_IRQ         2
+#define K1801VM1_EX_SWI         3
+#define K1801VM1_EX_MMU_MISS    4
+#define K1801VM1_EX_BREAK      16
+// TODO change exception codes
+
 
 struct PswBits {
     uint8_t c: 1;                /* carry */
@@ -77,7 +82,7 @@ typedef struct K1801VM1CPUClass {
 
     DeviceRealize parent_realize;
     void (*parent_reset)(CPUState *cpu);
-} K1801vm1CPUClass;
+} K1801VM1CPUClass;
 
 typedef struct K1801VM1CPU {
     /*< private >*/
@@ -117,4 +122,16 @@ static inline void cpu_get_tb_cpu_state(CPUK1801VM1State *env, target_ulong *pc,
     *cs_base = 0;
     *flags = 0;
 }
+
+// translate.c
+extern void k1801vm1_cpu_dump_state(CPUState *cs, FILE *f, int flags);
+extern void k1801vm1_translate_init(void);
+
+// helper.c
+void k1801vm1_cpu_do_interrupt(CPUState *cs);
+bool k1801vm1_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                           MMUAccessType access_type, int mmu_idx,
+                           bool probe, uintptr_t retaddr);
+hwaddr k1801vm1_cpu_get_phys_page_debug(CPUState *cs, vaddr addr);
+
 #endif /* _K1801VM1_CPU_H_ */
