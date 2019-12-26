@@ -23,6 +23,7 @@
 
 #include "exec/cpu-defs.h"
 
+#define K1801VM1_REG_NUM        8
 
 // TODO change exception codes
 #define K1801VM1_EX_DIV0        0
@@ -46,19 +47,15 @@ struct PswBits {
 typedef struct CPUK1801VM1State {
 
 //     uint32_t flags;               /* general execution flags */
-    uint16_t r0;
-    uint16_t r1;
-    uint16_t r2;
-    uint16_t r3;
-    uint16_t r4;
-    uint16_t r5;
-    uint16_t sp;                 /* stack pointer */
-    uint16_t pc;                 /* program counter */
+    uint32_t regs[8];
 
     union {                  /* processor status word */
-        uint16_t word;
+        uint32_t word;
         struct PswBits bits;
     } psw;
+
+    uint32_t cc_a;
+    uint32_t cc_b;
 
 //     void *irq[8];
 
@@ -118,7 +115,7 @@ static inline K1801VM1CPU *k1801vm1_env_get_cpu(CPUK1801VM1State *env)
 static inline void cpu_get_tb_cpu_state(CPUK1801VM1State *env, target_ulong *pc,
                                         target_ulong *cs_base, uint32_t *flags)
 {
-    *pc = env->pc;
+    *pc = env->regs[7];
     *cs_base = 0;
     *flags = 0;
 }
