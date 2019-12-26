@@ -8,7 +8,7 @@ static void k1801vm1_cpu_set_pc(CPUState *cs, vaddr value)
 {
     K1801VM1CPU *cpu = K1801VM1_CPU(cs);
 
-    cpu->env.pc = value;
+    cpu->env.regs[7] = value;
 }
 
 static bool k1801vm1_cpu_has_work(CPUState *cs)
@@ -25,7 +25,7 @@ static void k1801vm1_cpu_reset(CPUState *s)
     mcc->parent_reset(s);
 
     memset(env, 0, offsetof(CPUK1801VM1State, end_reset_fields));
-    env->pc = 0100000;
+    env->regs[7] = 0100000;
 }
 
 static void k1801vm1_cpu_disas_set_info(CPUState *cpu, disassemble_info *info)
@@ -93,7 +93,7 @@ static void k1801vm1_cpu_class_init(ObjectClass *oc, void *data)
     cc->get_phys_page_debug = k1801vm1_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_k1801vm1_cpu;
     cc->disas_set_info = k1801vm1_cpu_disas_set_info;
-//     cc->tcg_initialize = moxie_translate_init; TODO
+    cc->tcg_initialize = k1801vm1_translate_init;
 }
 
 

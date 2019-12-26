@@ -29,15 +29,10 @@ const VMStateDescription vmstate_k1801vm1_cpu = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT16(r0, CPUK1801VM1State),
-        VMSTATE_UINT16(r1, CPUK1801VM1State),
-        VMSTATE_UINT16(r2, CPUK1801VM1State),
-        VMSTATE_UINT16(r3, CPUK1801VM1State),
-        VMSTATE_UINT16(r4, CPUK1801VM1State),
-        VMSTATE_UINT16(r5, CPUK1801VM1State),
-        VMSTATE_UINT16(sp, CPUK1801VM1State),
-        VMSTATE_UINT16(pc, CPUK1801VM1State),
-        VMSTATE_UINT16(psw.word, CPUK1801VM1State),
+        VMSTATE_UINT32_ARRAY(regs,  CPUK1801VM1State, 8),
+        VMSTATE_UINT32(psw.word, CPUK1801VM1State),
+        VMSTATE_UINT32(cc_a, CPUK1801VM1State),
+        VMSTATE_UINT32(cc_b, CPUK1801VM1State),
         VMSTATE_END_OF_LIST()
     }
 };
