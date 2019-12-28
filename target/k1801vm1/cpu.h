@@ -54,9 +54,6 @@ typedef struct CPUK1801VM1State {
         struct PswBits bits;
     } psw;
 
-    uint32_t cc_a;
-    uint32_t cc_b;
-
 //     void *irq[8];
 
     /* Fields up to this point are cleared by a CPU reset */
