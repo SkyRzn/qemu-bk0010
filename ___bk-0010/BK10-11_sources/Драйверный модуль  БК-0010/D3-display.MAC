@@ -712,12 +712,12 @@ KBFS:	RTS	PC
 PPRP:	COMB	PRRP
 	BNE	PPRP2
 
-PPRP1:	MOV	#40000,ANVP	;  Õ≈ –¿—ÿ»–≈ÕÕ¿ﬂ œ¿Ãﬂ“‹
-	MOV	#40000,DVPB
-	MOV	#36000,DGPB
-	MOV	#3000,KSVP
-	MOV	#NZRUL0,@#ARRUL
-	BR	KPRP
+[0x9d8]	PPRP1:	MOV	#40000,ANVP			[012767];  Õ≈ –¿—ÿ»–≈ÕÕ¿ﬂ œ¿Ãﬂ“‹
+[0x9de]			MOV	#40000,DVPB			[012767]
+[0x9e4]			MOV	#36000,DGPB			[012767]
+[0x9ea]			MOV	#3000,KSVP			[012767]
+[0x9f0]			MOV	#NZRUL0,@#ARRUL		[012737]
+[0x9f6]			BR	KPRP				[000432]
 
 PPRP2:	MOV	#70000,ANVP	;  –¿—ÿ»–≈ÕÕ¿ﬂ œ¿Ãﬂ“‹
 	MOV	#10000,DVPB
@@ -731,11 +731,11 @@ PPRP2:	MOV	#70000,ANVP	;  –¿—ÿ»–≈ÕÕ¿ﬂ œ¿Ãﬂ“‹
 	MOV	MCWSS,R1
 	JSR	PC,PZTVSN
 
-KPRP:	MOV	#DSLSTB,BAZVP	;  ”—“. ¡¿«€
-	JSR	PC,PSBR		;  —¡–Œ— › –¿Õ¿
-	JSR	PC,PFSSTR	;  ‘Œ–Ã. —À. —“–.
+[0xa2c]	KPRP:	MOV	#DSLSTB,BAZVP				[012767];  ”—“. ¡¿«€
+[0xa32]			JSR	PC,PSBR						[004767];  —¡–Œ— › –¿Õ¿
+[0xa]			JSR	PC,PFSSTR					[004767];  ‘Œ–Ã. —À. —“–.
 
-	RTS	PC
+[0xa]			RTS	PC
 
 
 ;    -------------------------------------------

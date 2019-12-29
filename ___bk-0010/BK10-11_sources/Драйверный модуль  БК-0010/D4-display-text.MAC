@@ -8,6 +8,7 @@
 ; ======================================
 
 
+
 ;	бунд:	R1 - юдпея ярпнйх
 ;		R2 - дкхмю ярпнйх (лк.а.)
 ;		   - яхлбнк - нцпюмхвхрекэ (яр.а.)
@@ -472,29 +473,30 @@ PWREG:	MOV	(SP)+,R0
 ;    ** 0.3. яапня **
 ;    ----------------
 
-PSBR:	JSR	PC,PFINDT	;  сяр.хмд.рюа.
+[0x10fe]	PSBR:	CLR UNKNOWN_VAR		[005067]; МЕ АШКН Б КХЯРХМЦЕ
+[0x1102]			JSR	PC,PFINDT		[004767];  сяр.хмд.рюа.
 
-	CLR	NOMSIM		;  тнпл. AS
-	JSR	PC,PFASIM
+[0x1]				CLR	NOMSIM			;  тнпл. AS
+[0x10]				JSR	PC,PFASIM
 
-	MOV	FON,R0		;  яапня VP
-	MOV	AS,R3
-	MOV	DGPB,R2
-	ASR	R2
-1$:	MOV	R0,(R3)+
-	TST	R3
-	BPL	2$
-	SUB	DVPB,R3
-2$:	SOB	R2,1$
+[0x10]				MOV	FON,R0		;  яапня VP
+[0x10]				MOV	AS,R3
+[0x10]				MOV	DGPB,R2
+[0x10]				ASR	R2
+[0x10]			1$:	MOV	R0,(R3)+
+[0x10]				TST	R3
+[0x10]				BPL	2$
+[0x10]				SUB	DVPB,R3
+[0x10]			2$:	SOB	R2,1$
 
-PSBR1:	CLR	R5		;  тнпл. AGT
-	JSR	PC,PFAGT1
-	CLR	SCTVS
-	MOVB	NMPGT,MASPGT
+[0x10]		PSBR1:	CLR	R5		;  тнпл. AGT
+[0x10]				JSR	PC,PFAGT1
+[0x10]				CLR	SCTVS
+[0x10]				MOVB	NMPGT,MASPGT
 
-	JSR	PC,PFK		;  тнпл. йспянпю
+[0x10]				JSR	PC,PFK		;  тнпл. йспянпю
 
-	RTS	PC
+[0x10]				RTS	PC
 
 
 ;    ----------------------------------------
@@ -623,17 +625,17 @@ KFINDR:	RTS	PC
 ;    ** 0.6. тнплхпнбюмхе хмдхйюрнпю рюаскъжхх **
 ;    --------------------------------------------
 
-PFINDT:	MOV	FONSS,R1	;  яапня хмдхйюрнпю
-	MOV	BAZVP,R3
-	ADD	ANVP,R3
-	MOV	#3,R4
-10$:	JSR	PC,PZTVSW
-	SOB	R4,10$
+[0x50c]	PFINDT:	MOV	FONSS,R1	;  яапня хмдхйюрнпю
+[0x11]			MOV	BAZVP,R3
+[0x11]			ADD	ANVP,R3
+[0x11]			MOV	#3,R4
+[0x11]	10$:	JSR	PC,PZTVSW
+[0x11]			SOB	R4,10$
 
-	MOV	#20,R4		;  сяр. дкхмш якнбю
-	TSTB	PRCW
-	BEQ	1$
-	ASL	R4
+[0x11]			MOV	#20,R4		;  сяр. дкхмш якнбю
+[0x11]			TSTB	PRCW
+[0x11]			BEQ	1$
+[0x11]			ASL	R4
 
 1$:	CLR	R5		;  онхяй онгхжхх рюаскъжхх
 7$:	CLR	R2
