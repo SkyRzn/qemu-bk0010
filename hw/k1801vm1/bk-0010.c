@@ -70,18 +70,22 @@
 #include "include/hw/sysbus.h"
 
 
-#define RAM_BASE   00000
-#define RAM_SIZE   0100000
+#define RAM_BASE   0000000
+#define RAM_SIZE   0040000
+
+#define VIDEO_BASE 0040000
+#define VIDEO_SIZE 0100000 - VIDEO_BASE
 
 #define ROM_BASE   0100000
-#define ROM_SIZE   0100000
+#define ROM_SIZE   0200000 - ROM_BASE
+
 
 #define ROM_DEFAULT_FILENAME    "monit10.rom"
 
 
 static void bk0010_init(MachineState *machine)
 {
-    MemoryRegion *address_space, *ram, *rom;
+    MemoryRegion *address_space, *ram, *video, *rom;
     K1801VM1CPU *cpu ATTRIBUTE_UNUSED;
     const char *firmware = NULL;
     const char *filename;
@@ -93,6 +97,10 @@ static void bk0010_init(MachineState *machine)
     ram = g_new(MemoryRegion, 1);
     memory_region_allocate_system_memory(ram, NULL, "bk0010.ram", RAM_SIZE);
     memory_region_add_subregion(address_space, RAM_BASE, ram);
+
+    video = g_new(MemoryRegion, 1);
+    memory_region_allocate_system_memory(video, NULL, "bk0010.video", VIDEO_SIZE);
+    memory_region_add_subregion(address_space, VIDEO_BASE, video);
 
     rom = g_new(MemoryRegion, 1);
     memory_region_allocate_system_memory(rom, NULL, "bk0010.rom", ROM_SIZE);

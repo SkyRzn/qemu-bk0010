@@ -229,8 +229,8 @@ RWDM16:	.WORD	160074
 
 [0x5a]			JSR	PC,(R5)				[004715]	;  ОБРАЩЕНИЕ К МОДУЛЮ
 
-[0x]			MOV	(SP)+,R5
-[0x]			RTI
+[0x5c]			MOV	(SP)+,R5			[012605]
+[0x5e]			RTI
 
 
 
@@ -255,14 +255,14 @@ RWDM16:	.WORD	160074
 
 [0x86]			EMT	INDKLW		; EMT4 - ИНИЦИАЛИЗАЦИЯ DKLAW
 
-[0x]			INC	DSIMB		;- ИНИЦИАЛИЗАЦИЯ DTVM
-[0x]			INCB	NMPGT
-[0x]			COM	MASCW
-[0x]			COM	MCWSS
-[0x]			JSR	PC,PPRP1
+[0x88]			INC	DSIMB				[005267];- ИНИЦИАЛИЗАЦИЯ DTVM
+[0x8c]			INCB	NMPGT			[105267]
+[0x90]			COM	MASCW				[005167]
+[0x94]			COM	MCWSS				[005167]
+[0x98]			JSR	PC,PPRP1			[004767]
 
-				MOV	#KDBIT0,DLBIT0	;- ИНИЦИАЛИЗАЦИЯ DMAG
-				MOV	#KDBIT1,DLBIT1
+[0x]			MOV	#KDBIT0,DLBIT0		;- ИНИЦИАЛИЗАЦИЯ DMAG
+[0x]			MOV	#KDBIT1,DLBIT1
 
 				CLR	R0
 				EMT	INDTLG		;- ИНИЦИАЛИЗАЦИЯ DTLG
@@ -364,10 +364,10 @@ RWDM16:	.WORD	160074
 ;    ** 0. ОБРАБОТКА ЗАВИСАНИЯ И СТОП **
 ;    -----------------------------------
 
-MNZAW:	MOV	#1000,SP
-	MOV	#220,@#ASPORT
-	EMT	INDKLW
-	BR	MNKOM
+[0x]	MNZAW:	MOV	#1000,SP
+[0x]			MOV	#220,@#ASPORT
+[0x]			EMT	INDKLW
+[0x]			BR	MNKOM
 
 
 ;    -----------------------------
