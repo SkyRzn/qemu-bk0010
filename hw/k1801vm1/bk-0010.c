@@ -22,39 +22,7 @@
  * THE SOFTWARE.
  */
 
-/*
- * QEMU AVR CPU
- *
- * Copyright (c) 2016 Michael Rolnik
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, see
- * <http://www.gnu.org/licenses/lgpl-2.1.html>
- */
-
-/*
- *  NOTE:
- *      This is not a real AVR board !!! This is an example !!!
- *
- *        This example can be used to build a real AVR board.
- *
- *      This example board loads provided binary file into flash memory and
- *      executes it from 0x00000000 address in the code memory space.
- *
- *      Currently used for AVR CPU validation
- *
- */
-
+#include "display.h"
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
@@ -70,22 +38,43 @@
 #include "include/hw/sysbus.h"
 
 
-#define RAM_BASE   0000000
-#define RAM_SIZE   0040000
+#define RAM_BASE                0000000
+#define RAM_SIZE                0040000
 
-#define VIDEO_BASE 0040000
-#define VIDEO_SIZE 0100000 - VIDEO_BASE
+#define MONITOR_ROM_BASE        0100000
+#define MONITOR_ROM_SIZE        0120000 - MONITOR_ROM_BASE
+#define MONITOR_ROM_FILENAME    "MONIT10.ROM"
 
-#define ROM_BASE   0100000
-#define ROM_SIZE   0200000 - ROM_BASE
+#define BASIC_ROM_BASE          0120000
+#define BASIC_ROM_SIZE          0200000 - BASIC_ROM_BASE
+#define BASIC_ROM_FILENAME      "BASIC10.ROM"
 
 
-#define ROM_DEFAULT_FILENAME    "monit10.rom"
+// static uint64_t readfn(void *dev, hwaddr addr, unsigned size)
+// {
+//     printf("Read from %x\n", (int)addr);
+//     return 0;
+// }
+//
+// static void writefn(void *dev, hwaddr addr, uint64_t value,
+//                         unsigned size)
+// {
+//     printf("Write %x to %x\n", (int)value, (int)addr);
+// }
+//
+// static const MemoryRegionOps display_ops = {
+//     .read = readfn,
+//     .write = writefn,
+//     .valid.min_access_size = 1,
+//     .valid.max_access_size = 2,
+//     .endianness = DEVICE_NATIVE_ENDIAN,
+// };
 
 
 static void bk0010_init(MachineState *machine)
 {
-    MemoryRegion *address_space, *ram, *video, *rom;
+    MemoryRegion *address_space, *ram;
+    MemoryRegion *monitor_rom, *basic_rom;
     K1801VM1CPU *cpu ATTRIBUTE_UNUSED;
     const char *firmware = NULL;
     const char *filename;
@@ -98,23 +87,34 @@ static void bk0010_init(MachineState *machine)
     memory_region_allocate_system_memory(ram, NULL, "bk0010.ram", RAM_SIZE);
     memory_region_add_subregion(address_space, RAM_BASE, ram);
 
-    video = g_new(MemoryRegion, 1);
-    memory_region_allocate_system_memory(video, NULL, "bk0010.video", VIDEO_SIZE);
-    memory_region_add_subregion(address_space, VIDEO_BASE, video);
+    monitor_rom = g_new(MemoryRegion, 1);
+    memory_region_allocate_system_memory(monitor_rom, NULL, "bk0010-monitor.rom", MONITOR_ROM_SIZE);
+    memory_region_add_subregion(address_space, MONITOR_ROM_BASE, monitor_rom);
 
-    rom = g_new(MemoryRegion, 1);
-    memory_region_allocate_system_memory(rom, NULL, "bk0010.rom", ROM_SIZE);
-    memory_region_add_subregion(address_space, ROM_BASE, rom);
+    basic_rom = g_new(MemoryRegion, 1);
+    memory_region_allocate_system_memory(basic_rom, NULL, "bk0010-basic.rom", BASIC_ROM_SIZE);
+    memory_region_add_subregion(address_space, BASIC_ROM_BASE, basic_rom);
+
+    bk_display_init();
 
     if (machine->firmware)
         firmware = machine->firmware;
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, firmware);
     if (!filename)
-        filename = ROM_DEFAULT_FILENAME;
+        filename = MONITOR_ROM_FILENAME;
 
-    if (load_image_targphys(filename, ROM_BASE, ROM_SIZE) < 0) {
-        fprintf(stderr, "Error ROM loading: %s\n", filename);
+    if (load_image_targphys(filename, MONITOR_ROM_BASE, MONITOR_ROM_SIZE) < 0) {
+        fprintf(stderr, "Error Monitor ROM loading: %s\n", filename);
+        exit(-1);
+    }
+
+    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, firmware);
+    if (!filename)
+        filename = BASIC_ROM_FILENAME;
+
+    if (load_image_targphys(filename, BASIC_ROM_BASE, BASIC_ROM_SIZE) < 0) {
+        fprintf(stderr, "Error Basic ROM loading: %s\n", filename);
         exit(-1);
     }
 }

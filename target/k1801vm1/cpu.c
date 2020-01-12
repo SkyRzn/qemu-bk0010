@@ -21,11 +21,20 @@ static void k1801vm1_cpu_reset(CPUState *s)
     K1801VM1CPU *cpu = K1801VM1_CPU(s);
     K1801VM1CPUClass *mcc = K1801VM1_CPU_GET_CLASS(cpu);
     CPUK1801VM1State *env = &cpu->env;
+    int i;
 
     mcc->parent_reset(s);
 
     memset(env, 0, offsetof(CPUK1801VM1State, end_reset_fields));
+
+    for (i = 0; i < 7; i++)
+        env->regs[i] = 0;
     env->regs[7] = 0100000;
+    env->psw.word = 0;
+//     env->psw.bits.z = 1;
+    env->cc_c = 0;
+    env->cc_v = 0;
+    env->cc_zn = 0;
 }
 
 static void k1801vm1_cpu_disas_set_info(CPUState *cpu, disassemble_info *info)
