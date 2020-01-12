@@ -41,6 +41,7 @@ GlobalProperty hw_compat_4_0[] = {
     { "VGA",            "edid", "false" },
     { "secondary-vga",  "edid", "false" },
     { "bochs-display",  "edid", "false" },
+    { "bk-display", "edid", "false"},
     { "virtio-vga",     "edid", "false" },
     { "virtio-gpu",     "edid", "false" },
     { "virtio-device", "use-started", "false" },

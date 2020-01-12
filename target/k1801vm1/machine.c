@@ -31,6 +31,9 @@ const VMStateDescription vmstate_k1801vm1_cpu = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs,  CPUK1801VM1State, 8),
         VMSTATE_UINT32(psw.word, CPUK1801VM1State),
+        VMSTATE_UINT32(cc_c, CPUK1801VM1State),
+        VMSTATE_UINT32(cc_v, CPUK1801VM1State),
+        VMSTATE_UINT32(cc_zn, CPUK1801VM1State),
         VMSTATE_END_OF_LIST()
     }
 };

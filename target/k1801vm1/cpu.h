@@ -36,24 +36,33 @@
 
 
 struct PswBits {
-    uint8_t c: 1;                /* carry */
-    uint8_t v: 1;                /* overflow */
-    uint8_t z: 1;                /* zero */
-    uint8_t n: 1;                /* negative */
-    uint8_t t: 1;                /* trace */
-    uint8_t p: 3;                /* priority */
+    uint8_t c: 1;       // carry
+    uint8_t v: 1;       // overflow
+    uint8_t z: 1;       // zero
+    uint8_t n: 1;       // negative
+    uint8_t t: 1;       // enable trace
+    uint8_t r1: 2;      // reserved
+    uint8_t p: 1;       // mask interrupts
+
+    uint8_t c_ch: 1;    // c operation
+    uint8_t v_ch: 1;    // v operation
+    uint8_t z_ch: 1;    // z changed
+    uint8_t n_ch: 1;    // n changed
+};
+
+union Psw{                  /* processor status word */
+    uint32_t word;
+    struct PswBits bits;
 };
 
 typedef struct CPUK1801VM1State {
-
-//     uint32_t flags;               /* general execution flags */
     uint32_t regs[8];
 
-    union {                  /* processor status word */
-        uint32_t word;
-        struct PswBits bits;
-    } psw;
+    union Psw psw;
 
+    uint32_t cc_c;  // res
+    uint32_t cc_v;  // res ^ ~(arg1 ^ arg2)
+    uint32_t cc_zn; // res
 //     void *irq[8];
 
     /* Fields up to this point are cleared by a CPU reset */
