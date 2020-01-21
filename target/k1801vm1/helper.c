@@ -22,6 +22,7 @@ hwaddr k1801vm1_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 
 void k1801vm1_cpu_do_interrupt(CPUState *cs)
 {
+    printf("IIIIIINT!!!\n");
     switch (cs->exception_index) {
     case K1801VM1_EX_BREAK:
         break;

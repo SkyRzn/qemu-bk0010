@@ -2,6 +2,7 @@
 #include "qapi/error.h"
 #include "cpu.h"
 #include "machine.h"
+#include "exec/cpu_ldst.h"
 
 
 static void k1801vm1_cpu_set_pc(CPUState *cs, vaddr value)
@@ -31,10 +32,6 @@ static void k1801vm1_cpu_reset(CPUState *s)
         env->regs[i] = 0;
     env->regs[7] = 0100000;
     env->psw.word = 0;
-//     env->psw.bits.z = 1;
-    env->cc_c = 0;
-    env->cc_v = 0;
-    env->cc_zn = 0;
 }
 
 static void k1801vm1_cpu_disas_set_info(CPUState *cpu, disassemble_info *info)
@@ -67,6 +64,29 @@ static void k1801vm1_cpu_initfn(Object *obj)
     cpu_set_cpustate_pointers(cpu);
 }
 
+static bool k1801vm1_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
+{
+    K1801VM1CPU *cpu = K1801VM1_CPU(cs);
+    CPUK1801VM1State *env = &cpu->env;
+
+    printf("int\n");
+    if (interrupt_request & CPU_INTERRUPT_HARD) {
+        if (interrupt_request & CPU_INTERRUPT_TGT_EXT_0) { // TODO replace to normal define
+            env->regs[6] -= 2;
+            cpu_stw_data(env, env->regs[6], env->psw.word);
+
+            env->regs[6] -= 2;
+            cpu_stw_data(env, env->regs[6], env->regs[7]);
+
+            env->regs[7] = cpu_lduw_code(env, 060);
+            env->psw.word = cpu_lduw_code(env, 062);
+        }
+        cs->interrupt_request = 0;
+        return true;
+    }
+    return false;
+}
+
 static ObjectClass *k1801vm1_cpu_class_by_name(const char *cpu_model)
 {
     ObjectClass *oc;
@@ -96,6 +116,7 @@ static void k1801vm1_cpu_class_init(ObjectClass *oc, void *data)
 
     cc->has_work = k1801vm1_cpu_has_work;
     cc->do_interrupt = k1801vm1_cpu_do_interrupt;
+    cc->cpu_exec_interrupt = k1801vm1_cpu_exec_interrupt;
     cc->dump_state = k1801vm1_cpu_dump_state;
     cc->set_pc = k1801vm1_cpu_set_pc;
     cc->tlb_fill = k1801vm1_cpu_tlb_fill;

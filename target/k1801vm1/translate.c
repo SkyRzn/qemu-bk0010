@@ -32,28 +32,27 @@ enum {
 };
 
 enum Cc_cmd {
+    CC_CMD_ANY,
     CC_CMD_ADD,
     CC_CMD_SUB,
     CC_CMD_ASL
 };
 
-#define CC_PSW_SHIFT_C      0
-#define CC_PSW_SHIFT_V      1
-#define CC_PSW_SHIFT_Z      2
-#define CC_PSW_SHIFT_N      3
-#define CC_PSW_MASK_C       0x00000001
-#define CC_PSW_MASK_V       0x00000002
-#define CC_PSW_MASK_Z       0x00000004
-#define CC_PSW_MASK_N       0x00000008
-
-#define CC_PSW_SHIFT_C_CH   8
-#define CC_PSW_SHIFT_V_CH   9
-#define CC_PSW_SHIFT_Z_CH   10
-#define CC_PSW_SHIFT_N_CH   11
-#define CC_PSW_MASK_C_CH    0x00000100
-#define CC_PSW_MASK_V_CH    0x00000200
-#define CC_PSW_MASK_Z_CH    0x00000400
-#define CC_PSW_MASK_N_CH    0x00000800
+#define CC_PSW_SHIFT_C  0
+#define CC_PSW_SHIFT_V  1
+#define CC_PSW_SHIFT_Z  2
+#define CC_PSW_SHIFT_N  3
+#define CC_PSW_MASK_C   1 << CC_PSW_SHIFT_C
+#define CC_PSW_MASK_V   1 << CC_PSW_SHIFT_V
+#define CC_PSW_MASK_Z   1 << CC_PSW_SHIFT_Z
+#define CC_PSW_MASK_N   1 << CC_PSW_SHIFT_N
+#define CC_PSW_MASK_CV  CC_PSW_MASK_C | CC_PSW_MASK_V
+#define CC_PSW_MASK_ZN  CC_PSW_MASK_Z | CC_PSW_MASK_N
+#define CC_PSW_MASK_CVZN  CC_PSW_MASK_CV | CC_PSW_MASK_ZN
+#define SIGN_SHIFT      15
+#define SIGN_MASK       1 << SIGN_SHIFT
+#define CARRY_SHIFT     16
+#define CARRY_MASK      1 << CARRY_SHIFT
 
 typedef struct DisasContext { // TODO FIXME
     struct TranslationBlock *tb;
@@ -67,26 +66,29 @@ typedef struct DisasContext { // TODO FIXME
 
 static TCGv cpu_regs[K1801VM1_REG_NUM];
 static TCGv cpu_reg_psw;
-
-static TCGv cpu_cc_c;
-static TCGv cpu_cc_v;
-static TCGv cpu_cc_zn;
+static int tmp_cnt;
 
 #define cpu_reg_pc cpu_regs[7]
 #define cpu_reg_sp cpu_regs[6]
 
 #include "exec/gen-icount.h"
 
+static TCGv tmp_new(void)
+{
+    tmp_cnt++;
+    return tcg_temp_new_i32();
+}
+
+static void tmp_free(TCGv tmp)
+{
+    tcg_temp_free_i32(tmp);
+    tmp_cnt--;
+}
+
 void k1801vm1_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     K1801VM1CPU *cpu = K1801VM1_CPU(cs);
     CPUK1801VM1State *env = &cpu->env;
-//     int i;
-//     for (i = 0; i < 8; i++) {
-//         qemu_fprintf(f, "%d=0x%04x  ", i, (uint16_t)env->regs[i]);
-//     }
-//     qemu_fprintf(f, "psw=0x%04x  ", (uint16_t)env->psw.word);
-//     qemu_fprintf(f, "\n");
 
     int i;
     qemu_fprintf(f, "%c", (env->psw.bits.n) ? 'N' : ' ');
@@ -94,12 +96,9 @@ void k1801vm1_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     qemu_fprintf(f, "%c", (env->psw.bits.v) ? 'V' : ' ');
     qemu_fprintf(f, "%c", (env->psw.bits.c) ? 'C' : ' ');
     qemu_fprintf(f, "  %04x: ", env->regs[7]);
+
     for (i = 0; i < 7; i++)
-        qemu_fprintf(f, "r%d=0x%04x ", i, env->regs[i]);
-//     printf("  [");
-//     for (i = 0; i < 8; i++)
-//         printf("%d=%06o  ", i, env->regs[i]);
-//     printf("]\n");
+        qemu_fprintf(f, "r%d=%04x ", i, (env->regs[i] & 0xffff));
     qemu_fprintf(f, "\n");
 
 }
@@ -118,23 +117,6 @@ void k1801vm1_translate_init(void)
                                              reg_names[i]);
     }
     cpu_reg_psw = tcg_global_mem_new_i32(cpu_env, offsetof(CPUK1801VM1State, psw), "$psw");
-
-    cpu_cc_c = tcg_global_mem_new_i32(cpu_env, offsetof(CPUK1801VM1State, cc_c), "cc_c");
-    cpu_cc_v = tcg_global_mem_new_i32(cpu_env, offsetof(CPUK1801VM1State, cc_v), "cc_v");
-    cpu_cc_zn = tcg_global_mem_new_i32(cpu_env, offsetof(CPUK1801VM1State, cc_zn), "cc_zn");
-}
-
-static void print_regs(CPUK1801VM1State *env, DisasContext *ctx)
-{
-//     int i;
-//     printf("%c", (env->psw.bits.n) ? 'N' : ' ');
-//     printf("%c", (env->psw.bits.z) ? 'Z' : ' ');
-//     printf("%c", (env->psw.bits.v) ? 'V' : ' ');
-//     printf("%c", (env->psw.bits.c) ? 'C' : ' ');
-//     printf("  %04x: [%06o]", ctx->pc, ctx->opcode);
-//     for (i = 0; i < 7; i++)
-//         printf("r%d=0x%04x ", i, env->regs[i]);
-//     printf("\n");
 }
 
 #define loadb(env, ctx, t, addr, change)    load_operand(env, ctx, t, addr, 1, change)
@@ -149,26 +131,27 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
     if (reg == 7) {
         switch (mode) {
             case 000:
-                tcg_gen_mov_tl(t, cpu_regs[reg]);
+                tcg_gen_movi_tl(t, ctx->pc);
+//                 tcg_gen_mov_tl(t, cpu_regs[reg]);
                 break;
             case 020:
                 tcg_gen_movi_tl(t, (byte) ? cpu_ldub_code(env, ctx->pc) : cpu_lduw_code(env, ctx->pc));
                 break;
             case 030:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_movi_tl(t, 0);
                     tcg_gen_movi_tl(t1, cpu_lduw_code(env, ctx->pc));
                     if (byte)
                         tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 060:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     int addr = ctx->pc + cpu_ldsw_code(env, ctx->pc) + 2;
                     addr &= 0xffff; //TEST it works but I need to make it better
                     tcg_gen_movi_tl(t1, addr);
@@ -176,12 +159,12 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                         tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 070:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     int addr = ctx->pc + cpu_lduw_code(env, ctx->pc) + 2;
                     tcg_gen_movi_tl(t1, addr); // TODO check if the addr is right
                     tcg_gen_qemu_ld16u(t1, t1, ctx->memidx);
@@ -189,7 +172,7 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                         tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
 
@@ -197,7 +180,7 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                 printf("INCORRECT LOAD mode=%o, reg=7\n", mode); //TEST
                 exit(-1); //TEST
         }
-        if (change)
+        if (change && mode != 0)
             ctx->pc += 2;
     } else {
         switch (mode) {
@@ -206,18 +189,18 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                 break;
             case 010:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_andi_tl(t1, cpu_regs[reg], 0xffff);
                     if (byte)
                         tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 020:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_andi_tl(t1, cpu_regs[reg], 0xffff);
                     if (byte)
                         tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
@@ -225,13 +208,13 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
                     if (change)
                         tcg_gen_addi_tl(cpu_regs[reg], t1, (byte) ? 1 : 2);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 030:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
-                    TCGv t2 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
                     tcg_gen_andi_tl(t1, cpu_regs[reg], 0xffff);
                     tcg_gen_qemu_ld16u(t2, t1, ctx->memidx);
                     if (byte)
@@ -243,13 +226,13 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                         tcg_gen_addi_tl(cpu_regs[reg], cpu_regs[reg], (byte) ? 1 : 2);
 
                     }
-                    tcg_temp_free_i32(t1);
-                    tcg_temp_free_i32(t2);
+                    tmp_free(t1);
+                    tmp_free(t2);
                 }
                 break;
             case 040:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_subi_tl(t1, cpu_regs[reg], (byte) ? 1 : 2);
                     if (change)
                         tcg_gen_mov_tl(cpu_regs[reg], t1);
@@ -258,12 +241,12 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                         tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 060:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_addi_tl(t1, cpu_regs[reg], cpu_lduw_code(env, ctx->pc));
                     tcg_gen_andi_tl(t1, t1, 0xffff);
                     if (byte) {
@@ -271,16 +254,32 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
                     } else {
                         tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
                     }
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                     if (change)
                         ctx->pc += 2;
                 }
                 break;
             case 050:
             case 070:
+                {
+                    TCGv t1 = tmp_new();
+                    tcg_gen_addi_tl(t1, cpu_regs[reg], cpu_lduw_code(env, ctx->pc));
+                    tcg_gen_andi_tl(t1, t1, 0xffff);
+                    tcg_gen_qemu_ld16u(t1, t1, ctx->memidx);
+                    if (byte) {
+                        tcg_gen_qemu_ld8s(t, t1, ctx->memidx);
+                    } else {
+                        tcg_gen_qemu_ld16s(t, t1, ctx->memidx);
+                    }
+                    tmp_free(t1);
+                    if (change)
+                        ctx->pc += 2;
+                }
+                break;
+
             default:
                 printf("!!!!!!!!!!!!! READ SS %o\n", mode);
-                exit(-1); //TEST
+                exit(-1);
         }
     }
 }
@@ -297,33 +296,36 @@ static void store_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int 
     if (reg == 7) {
         switch (mode) {
             case 000:
-                tcg_gen_mov_tl(cpu_regs[reg], t);
+//                 tcg_gen_mov_tl(cpu_regs[reg], t);
+                tcg_gen_mov_tl(cpu_reg_pc, t);
+//                 tcg_gen_exit_tb(NULL, 0); //TODO uncomment when remove singlestep
+//                 ctx->bstate = BS_BRANCH;
                 break;
             case 020:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_movi_tl(t1, cpu_lduw_code(env, ctx->pc));
                     if (byte)
                         tcg_gen_qemu_st8(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_st16(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 030:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     tcg_gen_movi_tl(t1, cpu_lduw_code(env, ctx->pc));
                     if (byte)
                         tcg_gen_qemu_st8(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_st16(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             case 060:
                 {
-                    TCGv t1 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
                     int addr = ctx->pc + cpu_lduw_code(env, ctx->pc) + 2;
                     addr &= 0xffff;
                     tcg_gen_movi_tl(t1, addr);
@@ -331,11 +333,12 @@ static void store_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int 
                         tcg_gen_qemu_st8(t, t1, ctx->memidx);
                     else
                         tcg_gen_qemu_st16(t, t1, ctx->memidx);
-                    tcg_temp_free_i32(t1);
+                    tmp_free(t1);
                 }
                 break;
             default:
                 printf("INCORRECT STORE mode=%o, reg=7\n", mode); //TEST
+                exit(-1);
         }
         if (change)
             ctx->pc += 2;
@@ -372,8 +375,24 @@ static void store_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int 
             case 050:
             case 060:
             case 070:
+                {
+                    TCGv t1 = tmp_new();
+                    tcg_gen_addi_tl(t1, cpu_regs[reg], cpu_lduw_code(env, ctx->pc));
+                    tcg_gen_andi_tl(t1, t1, 0xffff);
+                    tcg_gen_qemu_ld16u(t1, t1, ctx->memidx);
+                    if (byte) {
+                        tcg_gen_qemu_st8(t, t1, ctx->memidx);
+                    } else {
+                        tcg_gen_qemu_st16(t, t1, ctx->memidx);
+                    }
+                    tmp_free(t1);
+                    if (change)
+                        ctx->pc += 2;
+                }
+                break;
             default:
                 printf("!!!!!!!!!!!!! WRITE DD %o\n", mode);
+                exit(-1);
         }
     }
 }
@@ -442,85 +461,54 @@ static void cc_set_cv(int c, int v)
         tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, CC_PSW_MASK_V);
 }
 
-static void cc_save_zn(TCGv res, int mask)
+static void cc_save_psw(TCGv arg1, TCGv arg2, TCGv res, int mask, enum Cc_cmd cmd)
 {
-    tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, mask);
-    tcg_gen_mov_tl(cpu_cc_zn, res);
-}
+    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~mask);
 
-static void cc_save_cv(TCGv arg1, TCGv arg2, TCGv res, int mask, enum Cc_cmd cmd)
-{
-    tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, mask);
-    if (mask & CC_PSW_MASK_V_CH) {
-        TCGv t = tcg_temp_new_i32();
+    if (mask & CC_PSW_MASK_C) {
+        TCGv t1 = tmp_new();
+        tcg_gen_andi_tl(t1, res, CARRY_MASK);
+        tcg_gen_shri_tl(t1, t1, CARRY_SHIFT-CC_PSW_SHIFT_C);
+        tcg_gen_or_tl(cpu_reg_psw, cpu_reg_psw, t1);
+        tmp_free(t1);
+    }
+    if (mask & CC_PSW_MASK_V) {
+        TCGv t1 = tmp_new();
         if (cmd == CC_CMD_ADD) {
-            tcg_gen_xor_tl(cpu_cc_v, arg1, res);
-            tcg_gen_xor_tl(t, arg1, arg2);
-            tcg_gen_andc_tl(cpu_cc_v, cpu_cc_v, t);
+            TCGv t2 = tmp_new();
+            tcg_gen_xor_tl(t1, arg1, res);
+            tcg_gen_xor_tl(t2, arg1, arg2);
+            tcg_gen_andc_tl(t1, t1, t2);
+            tmp_free(t2);
         } else if (cmd == CC_CMD_SUB) {
-            tcg_gen_xor_tl(cpu_cc_v, arg1, res);
-            tcg_gen_xor_tl(t, arg1, arg2);
-            tcg_gen_and_tl(cpu_cc_v, cpu_cc_v, t); // TODO check it
+            TCGv t2 = tmp_new();
+            tcg_gen_xor_tl(t1, arg1, res);
+            tcg_gen_xor_tl(t2, arg1, arg2);
+            tcg_gen_and_tl(t1, t1, t2); // TODO check it
+            tmp_free(t2);
         } else if (cmd == CC_CMD_ASL) {
-            tcg_gen_xor_tl(cpu_cc_v, arg1, res);
+            tcg_gen_xor_tl(t1, arg1, res);
         }
-        tcg_temp_free_i32(t);
+        tcg_gen_andi_tl(t1, t1, SIGN_MASK);
+        tcg_gen_shri_tl(t1, t1, SIGN_SHIFT-CC_PSW_SHIFT_V);
+        tcg_gen_or_tl(cpu_reg_psw, cpu_reg_psw, t1);
+        tmp_free(t1);
     }
-    if (mask & CC_PSW_MASK_C_CH) {
-        tcg_gen_mov_tl(cpu_cc_c, res);
+    if (mask & CC_PSW_MASK_Z) {
+        TCGv t1 = tmp_new();
+        TCGv zero = tcg_const_tl(0);
+        tcg_gen_ori_tl(t1, cpu_reg_psw, CC_PSW_MASK_Z);
+        tcg_gen_movcond_tl(TCG_COND_EQ, cpu_reg_psw, res, zero, t1, cpu_reg_psw);
+        tmp_free(t1);
+        tmp_free(zero);
     }
-}
-
-static void cc_gen_psw(DisasContext *ctx)
-{
-    TCGv t = tcg_temp_new_i32();
-
-    // Z
-    TCGLabel *l_zend = gen_new_label();
-    tcg_gen_andi_tl(t, cpu_reg_psw, CC_PSW_MASK_Z_CH);
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_zend);                 // if Z hasn't been changed goto l_zend
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_Z_CH);   // reset Z_CH
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_Z);      // set Z to 0
-    tcg_gen_brcondi_tl(TCG_COND_NE, cpu_cc_zn, 0, l_zend);         // if NZ is not zero goto l_zend
-    tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, CC_PSW_MASK_Z);        // set Z to 1
-    gen_set_label(l_zend);
-
-    // N
-    TCGLabel *l_nend = gen_new_label();
-    tcg_gen_andi_tl(t, cpu_reg_psw, CC_PSW_MASK_N_CH);
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_nend);                 // if N hasn't been changed goto l_nend
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_N_CH);    // reset N_CH
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_N);       // set N to 0
-    tcg_gen_andi_tl(t, cpu_cc_zn, 0x8000);                          // ZN & SIGN_MASK
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_nend);                 // if NZ is not negative goto l_nend
-    tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, CC_PSW_MASK_N);       // set N to 1
-    gen_set_label(l_nend);
-
-    // C
-    TCGLabel *l_cend = gen_new_label();
-    tcg_gen_andi_tl(t, cpu_reg_psw, CC_PSW_MASK_C_CH);
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_cend);                 // if C hasn't been changed goto l_cend
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_C_CH);   // reset C_CH
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_C);      // set C to 0
-
-    tcg_gen_andi_tl(t, cpu_cc_c, 0x10000);                          // C & CARRY_MASK
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_cend);                 // if C is 0 goto l_cend
-    tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, CC_PSW_MASK_C);       // set C to 1
-    gen_set_label(l_cend);
-
-    // V
-    TCGLabel *l_vend = gen_new_label();
-    tcg_gen_andi_tl(t, cpu_reg_psw, CC_PSW_MASK_V_CH);
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_vend);
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_V_CH);
-    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_V);
-
-    tcg_gen_andi_tl(t, cpu_cc_v, 0x8000);
-    tcg_gen_brcondi_tl(TCG_COND_EQ, t, 0, l_vend);
-    tcg_gen_ori_tl(cpu_reg_psw, cpu_reg_psw, CC_PSW_MASK_V);
-    gen_set_label(l_vend);
-
-    tcg_temp_free_i32(t);
+    if (mask & CC_PSW_MASK_N) {
+        TCGv t1 = tmp_new();
+        tcg_gen_andi_tl(t1, res, SIGN_MASK);
+        tcg_gen_shri_tl(t1, t1, SIGN_SHIFT-CC_PSW_SHIFT_N);
+        tcg_gen_or_tl(cpu_reg_psw, cpu_reg_psw, t1);
+        tmp_free(t1);
+    }
 }
 
 static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
@@ -538,87 +526,87 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
         src = (op & 0007700) >> 6;
         switch (oppart) {
             case 0010000: // MOV
-                load_operand(env, ctx, cpu_cc_zn, src, b, 1);
-                store_operand(env, ctx, cpu_cc_zn, dst, b, 1);
-                cc_save_zn(cpu_cc_zn, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
+                {
+                    TCGv t1 = tmp_new();
+                    load_operand(env, ctx, t1, src, b, 1);
+                    store_operand(env, ctx, t1, dst, b, 1);
+                    cc_save_psw(t1, t1, t1, CC_PSW_MASK_ZN, CC_CMD_ANY);
+                    tmp_free(t1);
+                }
                 break;
             case 0020000: // CMP
                 {
-                    TCGv t1 = tcg_temp_new_i32();
-                    TCGv t2 = tcg_temp_new_i32();
-                    TCGv t3 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
+                    TCGv t3 = tmp_new();
                     load_operand(env, ctx, t1, src, b, 1);
                     load_operand(env, ctx, t2, dst, b, 1);
                     tcg_gen_sub_tl(t3, t1, t2);       // dest - src
-                    cc_save_zn(t3, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                    cc_save_cv(t1, t2, t3, CC_PSW_MASK_C_CH | CC_PSW_MASK_V_CH, CC_CMD_SUB);
-                    tcg_temp_free_i32(t1);
-                    tcg_temp_free_i32(t2);
-                    tcg_temp_free_i32(t3);
+                    cc_save_psw(t1, t2, t3, CC_PSW_MASK_CVZN, CC_CMD_SUB);
+                    tmp_free(t1);
+                    tmp_free(t2);
+                    tmp_free(t3);
                 }
                 break;
-            case 0030000: // BIT(B)
+            case 0030000: // BIT(B) (dest &= src)
                 {
-                    TCGv t1 = tcg_temp_new_i32();
-                    TCGv t2 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
                     load_operand(env, ctx, t1, src, b, 1);
                     load_operand(env, ctx, t2, dst, b, 1);
-                    tcg_gen_and_tl(t2, t2, t1);       // dest & src
-                    cc_save_zn(t2, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
+                    tcg_gen_and_tl(t2, t2, t1);
+                    cc_save_psw(t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_set_cv(-1, 0);
-                    tcg_temp_free_i32(t1);
-                    tcg_temp_free_i32(t2);
+                    tmp_free(t1);
+                    tmp_free(t2);
                 }
                 break;
-            case 0040000: // BIC
+            case 0040000: // BIC(B) (dest &= ~src)
                 {
-                    TCGv t1 = tcg_temp_new_i32();
-                    TCGv t2 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
                     load_operand(env, ctx, t1, src, b, 1);
                     load_operand(env, ctx, t2, dst, b, 1);
-                    tcg_gen_andc_tl(t2, t2, t1);       // dest &= ~src
+                    tcg_gen_andc_tl(t2, t2, t1);
+                    cc_save_psw(t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
+                    cc_set_cv(-1, 0);
                     tcg_gen_ext16s_tl(t2, t2);
                     store_operand(env, ctx, t2, dst, b, 0);
-                    cc_save_zn(t2, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                    cc_set_cv(-1, 0);
-                    tcg_temp_free_i32(t1);
-                    tcg_temp_free_i32(t2);
+                    tmp_free(t1);
+                    tmp_free(t2);
                 }
                 break;
-            case 0050000: // BIS
+            case 0050000: // BIS(B) (dest |= src)
                 {
-                    TCGv t1 = tcg_temp_new_i32();
-                    TCGv t2 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
                     load_operand(env, ctx, t1, src, b, 1);
                     load_operand(env, ctx, t2, dst, b, 1);
-                    tcg_gen_or_tl(t2, t2, t1);       // dest |= src
+                    tcg_gen_or_tl(t2, t2, t1);
                     store_operand(env, ctx, t2, dst, b, 0);
-                    cc_save_zn(t2, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
+                    cc_save_psw(t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_set_cv(-1, 0);
-                    tcg_temp_free_i32(t1);
-                    tcg_temp_free_i32(t2);
+                    tmp_free(t1);
+                    tmp_free(t2);
                 }
                 break;
-            case 0060000:
+            case 0060000: // SUB or ADD
                 {
-                    TCGv t1 = tcg_temp_new_i32();
-                    TCGv t2 = tcg_temp_new_i32();
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
+                    TCGv t3 = tmp_new();
                     loadw(env, ctx, t1, src, 1);
                     loadw(env, ctx, t2, dst, 1);
-                    if (b) {                                 // SUB
-                        tcg_gen_sub_tl(cpu_cc_zn, t2, t1);
-                        tcg_gen_ext16s_tl(cpu_cc_zn, cpu_cc_zn);
-                    } else {                                // ADD
-                        tcg_gen_add_tl(cpu_cc_zn, t1, t2);
-                        tcg_gen_ext16s_tl(cpu_cc_zn, cpu_cc_zn);
-                    }
-                    cc_save_zn(cpu_cc_zn, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                    cc_save_cv(t1, t2, cpu_cc_zn,
-                               CC_PSW_MASK_C_CH | CC_PSW_MASK_V_CH,
-                               (b) ? CC_CMD_SUB : CC_CMD_ADD);
-                    storew(env, ctx, cpu_cc_zn, dst, 0);
-                    tcg_temp_free_i32(t1);
-                    tcg_temp_free_i32(t2);
+                    if (b)                              // SUB
+                        tcg_gen_sub_tl(t3, t2, t1);
+                    else                                // ADD
+                        tcg_gen_add_tl(t3, t1, t2);
+                    cc_save_psw(t1, t2, t3, CC_PSW_MASK_CVZN, (b) ? CC_CMD_SUB : CC_CMD_ADD);
+                    tcg_gen_ext16s_tl(t3, t3);
+                    storew(env, ctx, t3, dst, 0);
+                    tmp_free(t1);
+                    tmp_free(t2);
+                    tmp_free(t3);
                 }
                 break;
             default:
@@ -638,14 +626,16 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 //                 break;
             case 0004000: // XOR
                 {
-                    TCGv t = tcg_temp_new_i32();
-                    loadw(env, ctx, cpu_cc_zn, src, 1);
-                    loadw(env, ctx, t, dst, 1);
-                    tcg_gen_xor_tl(cpu_cc_zn, cpu_cc_zn, t);
-                    storew(env, ctx, cpu_cc_zn, dst, 0);
-                    cc_save_zn(cpu_cc_zn, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
+                    TCGv t1 = tmp_new();
+                    TCGv t2 = tmp_new();
+                    loadw(env, ctx, t1, src, 1);
+                    loadw(env, ctx, t2, dst, 1);
+                    tcg_gen_xor_tl(t2, t1, t2);
+                    storew(env, ctx, t2, dst, 0);
+                    cc_save_psw(t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_set_cv(-1, 0);
-                    tcg_temp_free_i32(t);
+                    tmp_free(t1);
+                    tmp_free(t2);
                 }
                 break;
 //             case 0005000: // floating point ops
@@ -657,15 +647,13 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     tcg_gen_subi_tl(cpu_regs[src], cpu_regs[src], 1);
                     tcg_gen_ext16s_tl(cpu_regs[src], cpu_regs[src]);
 
-                    TCGLabel *l = gen_new_label();
-                    tcg_gen_brcondi_tl(TCG_COND_EQ, cpu_regs[src], 0, l);
-
-                    tcg_gen_movi_tl(cpu_reg_pc, ctx->pc-(dst<<1));
-                    tcg_gen_exit_tb(NULL, 0);
-
-                    gen_set_label(l);
-
-                    tcg_gen_movi_tl(cpu_reg_pc, ctx->pc);
+                    TCGv pc = tcg_const_tl(ctx->pc);
+                    TCGv pc_branch = tcg_const_tl(ctx->pc - (dst<<1));
+                    TCGv zero = tcg_const_tl(0);
+                    tcg_gen_movcond_tl(TCG_COND_NE, cpu_reg_pc, cpu_regs[src], zero, pc_branch, pc);
+                    tmp_free(pc);
+                    tmp_free(pc_branch);
+                    tmp_free(zero);
                     tcg_gen_exit_tb(NULL, 0);
 
                     ctx->bstate = BS_BRANCH;
@@ -692,7 +680,7 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
     store = (oppart == 006400) ? 1 : 0;
 
 
-    TCGv t = tcg_temp_new_i32();
+    TCGv t = tmp_new();
     load_operand(env, ctx, t, addr, b, store);
 
     store = !store;
@@ -707,59 +695,53 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             break;
         case 005100:            // 0051 	COM(B) 	Complement: dest = ~dest
             tcg_gen_not_tl(t, t);
-            cc_save_zn(t, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
+            cc_save_psw(t, t, t, CC_PSW_MASK_ZN, CC_CMD_ANY);
             cc_set_cv(1, 0);
             break;
         case 005200:            // 0052 	INC(B) 	Increment: dest += 1
             {
-                TCGv t1 = tcg_temp_new_i32();
-                TCGv t2 = tcg_temp_new_i32();
+                TCGv t1 = tmp_new();
+                TCGv t2 = tmp_new();
                 tcg_gen_mov_tl(t1, t);
                 tcg_gen_movi_tl(t2, 1);
                 tcg_gen_add_tl(t, t1, t2);
-                cc_save_zn(t, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                cc_save_cv(t1, t2, t,
-                            CC_PSW_MASK_C_CH | CC_PSW_MASK_V_CH,
-                            CC_CMD_ADD);
-                tcg_temp_free_i32(t1);
-                tcg_temp_free_i32(t2);
+                cc_save_psw(t1, t2, t, CC_PSW_MASK_V|CC_PSW_MASK_ZN, CC_CMD_ADD);
+                tmp_free(t1);
+                tmp_free(t2);
             }
             break;
         case 005300:            // 0053 	DEC(B) 	Decrement: dest −= 1
             {
-                TCGv t1 = tcg_temp_new_i32();
-                TCGv t2 = tcg_temp_new_i32();
+                TCGv t1 = tmp_new();
+                TCGv t2 = tmp_new();
                 tcg_gen_mov_tl(t1, t);
                 tcg_gen_movi_tl(t2, 1);
                 tcg_gen_sub_tl(t, t1, t2);
-                cc_save_zn(t, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                cc_save_cv(t1, t2, t,
-                            CC_PSW_MASK_C_CH | CC_PSW_MASK_V_CH,
-                            CC_CMD_SUB);
-                tcg_temp_free_i32(t1);
-                tcg_temp_free_i32(t2);
+                cc_save_psw(t1, t2, t, CC_PSW_MASK_V|CC_PSW_MASK_ZN, CC_CMD_SUB);
+                tmp_free(t1);
+                tmp_free(t2);
             }
             break;
         case 005400:            // 0054 	NEG(B) 	Negate: dest = −dest
-            tcg_gen_neg_tl(t, t);
+            {
+                TCGv t1 = tmp_new();
+                tcg_gen_mov_tl(t1, t);
+                tcg_gen_neg_tl(t, t);
+                cc_save_psw(t1, t1, t, CC_PSW_MASK_CVZN, CC_CMD_SUB); // TODO
+                tmp_free(t1);
+            }
             break;
         case 005500:            // 0055 	ADC(B) 	Add carry: dest += C
             {
-                TCGv t1 = tcg_temp_new_i32();
-                TCGv t2 = tcg_temp_new_i32();
+                TCGv t1 = tmp_new();
+                TCGv t2 = tmp_new();
 
                 tcg_gen_mov_tl(t1, t);
-//                 cc_gen_psw(ctx);
-//                 tcg_gen_andi_tl(t2, cpu_reg_psw, CC_PSW_MASK_C); // TODO it's a hack!!!
-                tcg_gen_movi_tl(t2, 0);
+                tcg_gen_andi_tl(t2, cpu_reg_psw, CC_PSW_MASK_C);
                 tcg_gen_add_tl(t, t1, t2);
-                cc_save_zn(t, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                cc_save_cv(t1, t2, t,
-                            CC_PSW_MASK_C_CH | CC_PSW_MASK_V_CH,
-                            CC_CMD_SUB);
-
-                tcg_temp_free_i32(t1);
-                tcg_temp_free_i32(t2);
+                cc_save_psw(t1, t2, t, CC_PSW_MASK_CVZN, CC_CMD_ADD);
+                tmp_free(t1);
+                tmp_free(t2);
             }
             break;
         case 005600:            // 0056 	SBC(B) 	Subtract carry: dest −= C
@@ -767,7 +749,7 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             printf("dumb for SBC\n");
             break;
         case 005700:            // 0057 	TST(B) 	Test: Load src, set flags only
-            cc_save_zn(t, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
+            cc_save_psw(t, t, t, CC_PSW_MASK_ZN, CC_CMD_ANY);
             cc_set_cv(0, 0);
             break;
         case 006000:            // 0060 	ROR(B) 	Rotate right 1 bit
@@ -781,12 +763,11 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             break;
         case 006300:            // 0063 	ASL(B) 	Shift left: dest <<= 1
             {
-                TCGv t1 = tcg_temp_new_i32();
+                TCGv t1 = tmp_new();
                 tcg_gen_mov_tl(t1, t);
                 tcg_gen_shli_tl(t, t, 1); // TODO check
-                cc_save_zn(t, CC_PSW_MASK_Z_CH | CC_PSW_MASK_N_CH);
-                cc_save_cv(t1, t1, t, CC_PSW_MASK_C_CH | CC_PSW_MASK_V_CH, CC_CMD_ASL);
-                tcg_temp_free_i32(t1);
+                cc_save_psw(t1, t1, t, CC_PSW_MASK_CVZN, CC_CMD_ASL);
+                tmp_free(t1);
             }
             break;
         case 006400:
@@ -818,12 +799,13 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             }
             break;
         default:
-            return 0;
+            printf("Unknown SOP\n");
+            exit(-1);
     }
 
     if (store)
         store_operand(env, ctx, t, addr, b, 1);
-    tcg_temp_free_i32(t);
+    tmp_free(t);
 
     return 1;
 }
@@ -831,15 +813,14 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 // cond is reversed
 #define BRANCH(ctx, addr, mask, cond)               \
 {                                                   \
-    cc_gen_psw(ctx);                                \
     tcg_gen_movi_tl(cpu_reg_pc, ctx->pc);           \
-    TCGv t = tcg_temp_new_i32();                    \
+    TCGv t = tmp_new();                             \
     TCGLabel *l = gen_new_label();                  \
     tcg_gen_andi_tl(t, cpu_reg_psw, mask);          \
     tcg_gen_brcondi_i32(cond, t, 0, l);             \
     tcg_gen_movi_tl(cpu_reg_pc, ctx->pc + addr);    \
     gen_set_label(l);                               \
-    tcg_temp_free_i32(t);                           \
+    tmp_free(t);                                    \
 }
 
 static inline int decode_branch(CPUK1801VM1State *env, DisasContext *ctx, int op)
@@ -855,26 +836,21 @@ static inline int decode_branch(CPUK1801VM1State *env, DisasContext *ctx, int op
             push(ctx, cpu_regs[reg]);
             tcg_gen_movi_tl(cpu_regs[reg], ctx->pc);
         } else {
-            TCGv t = tcg_temp_new_i32();
+            TCGv t = tmp_new();
             tcg_gen_movi_tl(t, ctx->pc);
             push(ctx, t);
-            tcg_temp_free_i32(t);
+            tmp_free(t);
         }
     } else if ((op & 0777000) == 0104000) { // EMT 	Emulator trap
-        TCGv t = tcg_temp_new_i32();
-
+        TCGv t = tmp_new();
         tcg_gen_movi_tl(cpu_reg_pc, ctx->pc);
         push(ctx, cpu_reg_psw);
         push(ctx, cpu_reg_pc);
-
         tcg_gen_movi_i32(t, 030);   // EMT vector
         tcg_gen_qemu_ld16u(cpu_reg_pc, t, ctx->memidx);
-
         tcg_gen_movi_i32(t, 032);   // EMT PSW
         tcg_gen_qemu_ld16u(cpu_reg_psw, t, ctx->memidx);
-
-        tcg_temp_free_i32(t);
-
+        tmp_free(t);
     } else if (op == 0000002) { // RTI 	Return from interrupt
         pop(ctx, cpu_reg_pc);
         pop(ctx, cpu_reg_psw);
@@ -916,8 +892,9 @@ static inline int decode_branch(CPUK1801VM1State *env, DisasContext *ctx, int op
             case 0101000: //     1010xx 	BHI 	Branch if higher than (C|Z = 0)
                 BRANCH(ctx, addr, CC_PSW_MASK_C | CC_PSW_MASK_Z, TCG_COND_NE);
                 break;
-    //         case 0101400: //     1014xx 	BLOS 	Branch if lower or same (C|Z = 1)
-    //             break;
+            case 0101400: //     1014xx 	BLOS 	Branch if lower or same (C|Z = 1)
+                BRANCH(ctx, addr, CC_PSW_MASK_C | CC_PSW_MASK_Z, TCG_COND_EQ);
+                break;
             case 0102000: //     1020xx 	BVC 	Branch if overflow clear (V=0)
                 BRANCH(ctx, addr, CC_PSW_MASK_V, TCG_COND_NE);
                 break;
@@ -992,6 +969,7 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
     target_ulong pc_start;
     int num_insns;
 
+
     pc_start = tb->pc;
     ctx.pc = pc_start;
     ctx.tb = tb;
@@ -1006,8 +984,16 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         num_insns++;
 
         ctx.opcode = cpu_lduw_code(env, ctx.pc);
-        print_regs(env, &ctx);
+
+//         printf("%04x: [%06o]\n", ctx.pc, ctx.opcode); // TEST
+
+        tmp_cnt = 0;
+
         decode_opc(cpu, &ctx);
+
+        if (tmp_cnt > 0) {
+            printf("Tmp leak: 0x%x\n", ctx.pc);
+        }
 
         if (num_insns >= max_insns) {
             break;
@@ -1015,16 +1001,16 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         if (cs->singlestep_enabled) {
             break;
         }
-//         if ((ctx.pc & (TARGET_PAGE_SIZE - 1)) == 0) { TODO it is something useful, but I had a fault on it
+//         if ((ctx.pc & (TARGET_PAGE_SIZE - 1)) == 0) { // TODO it's something useful!!!
 //             break;
 //         }
 
 // SINGLE STEP TEST
-//         if (ctx.pc == 0x84be)      // TEST
+//         if (ctx.pc == 0x804c+2) {     // TEST
 //             sleep(1);
-//         else
+//             exit(-1);
+//         } else
             tcg_gen_movi_tl(cpu_reg_pc, ctx.pc); // TEST
-        cc_gen_psw(&ctx); // TEST
 
         tcg_gen_exit_tb(NULL, 0); // TEST
         ctx.bstate = BS_BRANCH;   // TEST
@@ -1038,9 +1024,11 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         switch (ctx.bstate) {
         case BS_STOP:
         case BS_NONE:
+            printf("BS NONE\n");
 //             gen_goto_tb(env, &ctx, 0, ctx.pc); TODO
             break;
         case BS_EXCP:
+            printf("BS EXP\n");
 //             tcg_gen_exit_tb(NULL, 0); TODO
             break;
         case BS_BRANCH:

@@ -43,11 +43,6 @@ struct PswBits {
     uint8_t t: 1;       // enable trace
     uint8_t r1: 2;      // reserved
     uint8_t p: 1;       // mask interrupts
-
-    uint8_t c_ch: 1;    // c operation
-    uint8_t v_ch: 1;    // v operation
-    uint8_t z_ch: 1;    // z changed
-    uint8_t n_ch: 1;    // n changed
 };
 
 union Psw{                  /* processor status word */
@@ -60,12 +55,8 @@ typedef struct CPUK1801VM1State {
 
     union Psw psw;
 
-    uint32_t cc_c;  // res
-    uint32_t cc_v;  // res ^ ~(arg1 ^ arg2)
-    uint32_t cc_zn; // res
-//     void *irq[8];
+//     int irq;
 
-    /* Fields up to this point are cleared by a CPU reset */
     struct {} end_reset_fields;
 } CPUK1801VM1State;
 

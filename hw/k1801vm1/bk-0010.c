@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 
-#include "display.h"
+#include "bk-hw.h"
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
@@ -38,39 +38,6 @@
 #include "include/hw/sysbus.h"
 
 
-#define RAM_BASE                0000000
-#define RAM_SIZE                0040000
-
-#define MONITOR_ROM_BASE        0100000
-#define MONITOR_ROM_SIZE        0120000 - MONITOR_ROM_BASE
-#define MONITOR_ROM_FILENAME    "MONIT10.ROM"
-
-#define BASIC_ROM_BASE          0120000
-#define BASIC_ROM_SIZE          0200000 - BASIC_ROM_BASE
-#define BASIC_ROM_FILENAME      "BASIC10.ROM"
-
-
-// static uint64_t readfn(void *dev, hwaddr addr, unsigned size)
-// {
-//     printf("Read from %x\n", (int)addr);
-//     return 0;
-// }
-//
-// static void writefn(void *dev, hwaddr addr, uint64_t value,
-//                         unsigned size)
-// {
-//     printf("Write %x to %x\n", (int)value, (int)addr);
-// }
-//
-// static const MemoryRegionOps display_ops = {
-//     .read = readfn,
-//     .write = writefn,
-//     .valid.min_access_size = 1,
-//     .valid.max_access_size = 2,
-//     .endianness = DEVICE_NATIVE_ENDIAN,
-// };
-
-
 static void bk0010_init(MachineState *machine)
 {
     MemoryRegion *address_space, *ram;
@@ -84,18 +51,24 @@ static void bk0010_init(MachineState *machine)
     address_space = get_system_memory();
 
     ram = g_new(MemoryRegion, 1);
-    memory_region_allocate_system_memory(ram, NULL, "bk0010.ram", RAM_SIZE);
+    memory_region_allocate_system_memory(ram, NULL, RAM_NAME, RAM_SIZE);
     memory_region_add_subregion(address_space, RAM_BASE, ram);
 
     monitor_rom = g_new(MemoryRegion, 1);
-    memory_region_allocate_system_memory(monitor_rom, NULL, "bk0010-monitor.rom", MONITOR_ROM_SIZE);
+    memory_region_allocate_system_memory(monitor_rom, NULL, MONITOR_ROM_NAME, MONITOR_ROM_SIZE);
     memory_region_add_subregion(address_space, MONITOR_ROM_BASE, monitor_rom);
 
     basic_rom = g_new(MemoryRegion, 1);
-    memory_region_allocate_system_memory(basic_rom, NULL, "bk0010-basic.rom", BASIC_ROM_SIZE);
+    memory_region_allocate_system_memory(basic_rom, NULL, BASIC_ROM_NAME, BASIC_ROM_SIZE);
     memory_region_add_subregion(address_space, BASIC_ROM_BASE, basic_rom);
 
+//     sysregs = g_new(MemoryRegion, 1);
+//     memory_region_allocate_system_memory(sysregs, NULL, SYSREGS_NAME, SYSREGS_SIZE);
+//     memory_region_add_subregion(address_space, SYSREGS_BASE, sysregs);
+
     bk_display_init();
+//     bk_sysregs_init();
+    bk_keyboard_init();
 
     if (machine->firmware)
         firmware = machine->firmware;
