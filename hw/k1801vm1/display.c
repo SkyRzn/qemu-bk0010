@@ -1,4 +1,4 @@
-#include "display.h"
+#include "bk-hw.h"
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "ui/console.h"
@@ -29,7 +29,6 @@ void bk_display_init(void)
     DeviceState *dev;
     dev = qdev_create(NULL, TYPE_BK_DISPLAY);
     qdev_init_nofail(dev);
-    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, VIDEO_BASE);
 }
 
 static void bk_display_draw_line(void *dev, uint8_t *d, const uint8_t *s,
@@ -52,51 +51,51 @@ static void bk_display_draw_line(void *dev, uint8_t *d, const uint8_t *s,
 
 static void bk_display_update(void *dev)
 {
-    BKDisplayState *bk = BK_DISPLAY(dev);
-    DisplaySurface *surface = qemu_console_surface(bk->con);
+    BKDisplayState *s = BK_DISPLAY(dev);
+    DisplaySurface *surface = qemu_console_surface(s->con);
     int first = 0, last = 0;
 
-    if (bk->invalidate) {
-        framebuffer_update_memory_section(&bk->vram_section, &bk->vram, 0,
+    if (s->invalidate) {
+        framebuffer_update_memory_section(&s->vram_section, &s->vram, 0,
                                           WIDTH, WIDTH/8); // TODO 0x100 -> real src width
-        bk->invalidate = 0;
+        s->invalidate = 0;
     }
 
-    framebuffer_update_display(surface, &bk->vram_section, WIDTH, HEIGHT,
+    framebuffer_update_display(surface, &s->vram_section, WIDTH, HEIGHT,
                                WIDTH/8, WIDTH*4, 0, 1, bk_display_draw_line,
-                               bk, &first, &last); // TODO 0x100 -> real src width
+                               s, &first, &last); // TODO 0x100 -> real src width
 
-    dpy_gfx_update(bk->con, 0, 0, WIDTH, HEIGHT);
+    dpy_gfx_update(s->con, 0, 0, WIDTH, HEIGHT);
 }
 
 static void bk_display_invalidate(void *dev)
 {
-    BKDisplayState *bk = BK_DISPLAY(dev);
-    bk->invalidate = 1;
+    BKDisplayState *s = BK_DISPLAY(dev);
+    s->invalidate = 1;
 }
 
-static const GraphicHwOps bk_display_ops = {
+static const GraphicHwOps ops = {
     .invalidate  = bk_display_invalidate,
     .gfx_update = bk_display_update,
 };
 
 static void bk_display_realize(DeviceState *dev, Error **errp)
 {
-    BKDisplayState *bk = BK_DISPLAY(dev);
+    BKDisplayState *s = BK_DISPLAY(dev);
 
-    memory_region_init_ram(&bk->vram, OBJECT(dev), "bk-display", VIDEO_BASE,
-                           &error_fatal);
-    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &bk->vram);
+    memory_region_init_ram(&s->vram, OBJECT(dev), VIDEO_NAME, VIDEO_BASE, &error_fatal);
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->vram);
 
-    bk->invalidate = 1;
+    s->invalidate = 1;
 
-    bk->con = graphic_console_init(dev, 0, &bk_display_ops, bk);
-    qemu_console_resize(bk->con, WIDTH, HEIGHT);
+    s->con = graphic_console_init(dev, 0, &ops, s);
+    qemu_console_resize(s->con, WIDTH, HEIGHT);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, VIDEO_BASE);
 }
 
-static void bk_display_class_init(ObjectClass *klass, void *data)
+static void bk_display_class_init(ObjectClass *class, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
+    DeviceClass *dc = DEVICE_CLASS(class);
     dc->realize = bk_display_realize;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
 }
