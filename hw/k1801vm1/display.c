@@ -21,7 +21,7 @@ typedef struct BochsDisplayState {
 #define TYPE_BK_DISPLAY "bk-display"
 #define BK_DISPLAY(obj) OBJECT_CHECK(BKDisplayState, (obj), TYPE_BK_DISPLAY)
 
-#define WIDTH   256
+#define WIDTH   512
 #define HEIGHT  256
 
 void bk_display_init(void)
@@ -40,10 +40,7 @@ static void bk_display_draw_line(void *dev, uint8_t *d, const uint8_t *s,
     for (i = 0; i < WIDTH/8; i++) {
         uint8_t src = s[i];
         for (j = 0; j < 8; j++) {
-            if (src & 1)
-                buf[i*8+j] = 0xffffffff;
-            else
-                buf[i*8+j] = 0;
+            buf[i*8+j] = (src & 1) ? 0xffffffff : 0;
             src >>= 1;
         }
     }
@@ -56,14 +53,13 @@ static void bk_display_update(void *dev)
     int first = 0, last = 0;
 
     if (s->invalidate) {
-        framebuffer_update_memory_section(&s->vram_section, &s->vram, 0,
-                                          WIDTH, WIDTH/8); // TODO 0x100 -> real src width
+        framebuffer_update_memory_section(&s->vram_section, &s->vram, 0, HEIGHT, WIDTH/8);
         s->invalidate = 0;
     }
 
     framebuffer_update_display(surface, &s->vram_section, WIDTH, HEIGHT,
                                WIDTH/8, WIDTH*4, 0, 1, bk_display_draw_line,
-                               s, &first, &last); // TODO 0x100 -> real src width
+                               s, &first, &last);
 
     dpy_gfx_update(s->con, 0, 0, WIDTH, HEIGHT);
 }
