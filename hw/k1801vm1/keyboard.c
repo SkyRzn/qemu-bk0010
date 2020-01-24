@@ -73,6 +73,7 @@ static uint64_t kbd_readfn(void *dev, hwaddr addr, unsigned int size)
             break;
     }
     pthread_mutex_unlock(&mutex);
+    res = 12; //test
     printf("!!! SYSREGS READ addr=0x%lx val=0x%x\n", addr, res);
     return res;
 }
