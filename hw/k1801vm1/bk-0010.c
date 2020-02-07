@@ -62,13 +62,9 @@ static void bk0010_init(MachineState *machine)
     memory_region_allocate_system_memory(basic_rom, NULL, BASIC_ROM_NAME, BASIC_ROM_SIZE);
     memory_region_add_subregion(address_space, BASIC_ROM_BASE, basic_rom);
 
-//     sysregs = g_new(MemoryRegion, 1);
-//     memory_region_allocate_system_memory(sysregs, NULL, SYSREGS_NAME, SYSREGS_SIZE);
-//     memory_region_add_subregion(address_space, SYSREGS_BASE, sysregs);
-
-    bk_display_init();
-//     bk_sysregs_init();
+    bk_sysregs_init();
     bk_keyboard_init();
+    bk_display_init();
 
     if (machine->firmware)
         firmware = machine->firmware;

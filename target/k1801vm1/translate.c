@@ -942,7 +942,6 @@ static inline int decode_branch(CPUK1801VM1State *env, DisasContext *ctx, int op
 
 static inline int decode_nop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 {
-    printf("nop %o\n", op);
     if (op == 0000240 || op == 0000260) {
         return 1;
     } else if ((op & 0777760) == 0000240) {
@@ -1009,7 +1008,7 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
     ctx.bstate = BS_NONE;
     num_insns = 0;
 
-    printf("pc: 0x%04x\n", pc_start);
+//     printf("pc: 0x%04x\n", pc_start);
 
     gen_tb_start(tb);
 

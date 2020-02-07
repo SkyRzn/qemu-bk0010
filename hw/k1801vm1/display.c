@@ -1,4 +1,5 @@
 #include "bk-hw.h"
+#include "sysregs.h"
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "ui/console.h"
@@ -13,16 +14,23 @@ typedef struct BochsDisplayState {
     SysBusDevice parent_obj;
     DisplaySurface *ds;
     QemuConsole *con;
+    MemoryRegion sysregs;
     MemoryRegion vram;
     MemoryRegionSection vram_section;
     int invalidate;
 } BKDisplayState;
 
 #define TYPE_BK_DISPLAY "bk-display"
+#define TYPE_BK_DISPLAY_VRAM TYPE_BK_DISPLAY "-vram"
+#define TYPE_BK_DISPLAY_SYSREGS TYPE_BK_DISPLAY "-sysregs"
 #define BK_DISPLAY(obj) OBJECT_CHECK(BKDisplayState, (obj), TYPE_BK_DISPLAY)
 
 #define WIDTH   512
 #define HEIGHT  256
+
+
+// static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 void bk_display_init(void)
 {
@@ -70,7 +78,32 @@ static void bk_display_invalidate(void *dev)
     s->invalidate = 1;
 }
 
-static const GraphicHwOps ops = {
+// static uint64_t readfn(void *dev, hwaddr addr, unsigned int size)
+// {
+// //     BKDisplayState *s = BK_DISPLAY(dev);
+//     int res = 0;
+//
+//     printf("!!!!!!!!!!!!!!!!!!!!!! addr=0x%lx\n", addr);
+//     pthread_mutex_lock(&mutex);
+//     pthread_mutex_unlock(&mutex);
+//     return res;
+// }
+//
+// static void writefn(void *dev, hwaddr addr, uint64_t value, unsigned int size)
+// {
+// //     BKDisplayState *s = BK_DISPLAY(dev);
+//
+//     printf("!!!!!!!!!!!!!!!!!!!!!! addr=0x%lx val=0x%lx\n", addr, value);
+//     pthread_mutex_lock(&mutex);
+//     pthread_mutex_unlock(&mutex);
+// }
+//
+// static const MemoryRegionOps sysregs_ops = {
+//     .read = readfn,
+//     .write = writefn
+// };
+
+static const GraphicHwOps graphic_ops = {
     .invalidate  = bk_display_invalidate,
     .gfx_update = bk_display_update,
 };
@@ -79,14 +112,15 @@ static void bk_display_realize(DeviceState *dev, Error **errp)
 {
     BKDisplayState *s = BK_DISPLAY(dev);
 
-    memory_region_init_ram(&s->vram, OBJECT(dev), VIDEO_NAME, VIDEO_BASE, &error_fatal);
+    memory_region_init_ram(&s->vram, OBJECT(dev), TYPE_BK_DISPLAY_VRAM, VIDEO_BASE, &error_fatal);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->vram);
-
     s->invalidate = 1;
-
-    s->con = graphic_console_init(dev, 0, &ops, s);
+    s->con = graphic_console_init(dev, 0, &graphic_ops, s);
     qemu_console_resize(s->con, WIDTH, HEIGHT);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, VIDEO_BASE);
+
+//     bk_sysregs_init_region(dev, TYPE_BK_DISPLAY_SYSREGS , &s->sysregs, &sysregs_ops, SYSREGS_BASE + 064, 2);
+
 }
 
 static void bk_display_class_init(ObjectClass *class, void *data)

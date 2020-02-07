@@ -1,4 +1,5 @@
 #include "bk-hw.h"
+#include "sysregs.h"
 #include "qemu/osdep.h"
 #include "exec/address-spaces.h"
 #include "hw/hw.h"
@@ -17,6 +18,13 @@
 
 #define IRQ_DISBLED_MASK    1 << 6
 #define HAS_DATA_MASK       1 << 7
+
+const char KBD_TABLE[] = {
+    0000, 0000, 0061, 0062, 0063, 0064, 0065, 0066, 0067, 0070, 0071, 0060, 0000, 0000, 0010, 0000,
+    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0012, 0000, 0101, 0000,
+    0102, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+};
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static CPUState *cpu;
@@ -44,70 +52,67 @@ void bk_keyboard_init(void)
     cpu = qemu_get_cpu(0);
 }
 
-static uint64_t kbd_readfn(void *dev, hwaddr addr, unsigned int size)
+static uint64_t readfn(void *dev, hwaddr addr, unsigned int size)
 {
     BkKeyboardState *s = BK_KEYBOARD(dev);
     int res = 0;
 
     pthread_mutex_lock(&mutex);
     switch (addr) {
-        case 060:
+        case 0:
+            s->state_reg &= ~HAS_DATA_MASK;
             if (size == 2)
                 res = s->state_reg;
             else
                 res = (s->state_reg >> 8) & 0xff;
             break;
-        case 061:
+        case 1:
             if (size == 1)
                 res = s->state_reg & 0xff;
             break;
-        case 062:
+        case 2:
             if (size == 2)
                 res = s->data_reg;
             else
                 res = (s->data_reg >> 8) & 0xff;
             break;
-        case 063:
+        case 3:
             if (size == 1)
                 res = s->data_reg & 0xff;
             break;
     }
     pthread_mutex_unlock(&mutex);
     res = 12; //test
-    printf("!!! SYSREGS READ addr=0x%lx val=0x%x\n", addr, res);
+    printf("KBD READ addr=0x%lx val=0x%x\n", addr, res);
     return res;
 }
 
-static void kbd_writefn(void *dev, hwaddr addr, uint64_t value,
-                        unsigned int size)
+static void writefn(void *dev, hwaddr addr, uint64_t value, unsigned int size)
 {
     BkKeyboardState *s = BK_KEYBOARD(dev);
 
     pthread_mutex_lock(&mutex);
     switch (addr) {
-        case 060:
+        case 0:
             if (size == 2)
                 s->state_reg = value;
             else
                 s->state_reg = (s->state_reg & 0xff) | ((value << 8) & 0xff00);
             break;
-        case 061:
+        case 1:
             if (size == 1)
                 s->state_reg = (s->state_reg & 0xff00) | (value & 0xff);
-        case 062:
+        case 2:
             printf("!!! KB WRITE DATA REG\n");
             break;
     }
     pthread_mutex_unlock(&mutex);
-    printf("!!! SYSREGS WRITE addr=0x%lx val=0x%lx\n", addr, value);
+    printf("KBD WRITE addr=0x%lx val=0x%lx\n", addr, value);
 }
 
 static const MemoryRegionOps ops = {
-    .read = kbd_readfn,
-    .write = kbd_writefn,
-    .valid.min_access_size = 1,
-    .valid.max_access_size = 2,
-//     .endianness = DEVICE_NATIVE_ENDIAN,
+    .read = readfn,
+    .write = writefn
 };
 
 static void bk_keyboard_event(void *dev, int ch)
@@ -118,13 +123,22 @@ static void bk_keyboard_event(void *dev, int ch)
     if (s->state_reg & HAS_DATA_MASK)
         return;
 
+    printf("KBD: Unimplemented keycode %d\n", ch);
+    return;
+    //     if (ch < 0 || ch > sizeof(KBD_TABLE) || KBD_TABLE[ch] == 0) {
+    //         printf("KBD: Unimplemented keycode %d\n", ch);
+    //         return;
+    //     }
+
+    ch = KBD_TABLE[ch];
+
     pthread_mutex_lock(&mutex);
     s->data_reg = ch;
     s->state_reg |= HAS_DATA_MASK;
     irq_dis = s->state_reg & IRQ_DISBLED_MASK;
     pthread_mutex_unlock(&mutex);
 
-    printf("IRQ dis=%d\n", irq_dis);
+    printf("KBD output (oct) %o\n", ch);
     if (!irq_dis)
         cpu_interrupt(cpu, CPU_INTERRUPT_HARD | CPU_INTERRUPT_KEYBOARD);
 }
@@ -140,14 +154,7 @@ static void bk_keyboard_reset(DeviceState *dev)
 static void bk_keyboard_realize(DeviceState *dev, Error **err)
 {
     BkKeyboardState *s = BK_KEYBOARD(dev);
-
-    memory_region_init_ram(&s->sysregs, OBJECT(dev), TYPE_BK_KEYBOARD, SYSREGS_SIZE, &error_fatal);
-
-    memory_region_init_io(&s->sysregs, OBJECT(dev), &ops, s, TYPE_BK_KEYBOARD, SYSREGS_SIZE);
-    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->sysregs);
-
-    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, SYSREGS_BASE);
-
+    bk_sysregs_init_region(dev, TYPE_BK_KEYBOARD, &s->sysregs, &ops, SYSREGS_BASE + 060, 4);
     qemu_add_kbd_event_handler(bk_keyboard_event, s);
 }
 
