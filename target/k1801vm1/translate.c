@@ -166,7 +166,9 @@ static void get_addr(CPUK1801VM1State *env, DisasContext *ctx, TCGv addr, int ar
             case 000:
                 break;
             case 010:
-                tcg_gen_andi_tl(addr, cpu_reg_pc, 0xffff);
+                tcg_gen_movi_tl(addr, ctx->pc);
+//                 tcg_gen_andi_tl(addr, cpu_reg_pc, 0xffff);
+                break;
             case 030:
                 tcg_gen_movi_tl(addr, cpu_lduw_code(env, pc_addr));
                 break;
@@ -262,6 +264,9 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
 
     if (ctx->byte) {
         tcg_gen_qemu_ld8u(t, addr, ctx->memidx);
+            if (ctx->pc == 0x90d6 + 2) {
+                tcg_gen_qemu_ld8u(cpu_regs[3], cpu_regs[1], ctx->memidx);
+            }
         sign_ext8(t);
     } else {
         tcg_gen_qemu_ld16u(t, addr, ctx->memidx);
@@ -433,11 +438,16 @@ static void cc_save_psw(DisasContext *ctx, TCGv arg1, TCGv arg2, TCGv res, int m
             tcg_gen_shli_tl(t1, t1, carry_shift);
             tcg_gen_andi_tl(t1, t1, carry_mask); // TODO лишнее?
         } else if (cmd == CC_CMD_SUB) {
+            TCGv zero = tcg_const_tl(0);
             TCGv t2 = tmp_new();
-            tcg_gen_andi_tl(t1, arg1, (ctx->byte) ? 0xff : 0xffff);
-            tcg_gen_andi_tl(t2, arg2, (ctx->byte) ? 0xff : 0xffff);
-            tcg_gen_sub_tl(t1, t1, t2);
-            tcg_gen_andi_tl(t1, t1, carry_mask);
+
+            tcg_gen_andi_tl(arg1, arg1, (ctx->byte) ? 0xff : 0xffff);
+            tcg_gen_andi_tl(arg2, arg2, (ctx->byte) ? 0xff : 0xffff);
+
+            tcg_gen_movi_tl(t2, carry_mask);
+            tcg_gen_movcond_tl(TCG_COND_GT, t1, arg1, arg2, t2, zero);
+            tmp_free(zero);
+
             tmp_free(t2);
         } else {
             tcg_gen_andi_tl(t1, res, carry_mask);
@@ -456,7 +466,7 @@ static void cc_save_psw(DisasContext *ctx, TCGv arg1, TCGv arg2, TCGv res, int m
             tmp_free(t2);
         } else if (cmd == CC_CMD_SUB) {
             TCGv t2 = tmp_new();
-            tcg_gen_xor_tl(t1, arg1, res);
+            tcg_gen_xor_tl(t1, arg2, res);
             tcg_gen_xor_tl(t2, arg1, arg2);
             tcg_gen_and_tl(t1, t1, t2); // TODO check it
             tmp_free(t2);
@@ -478,6 +488,21 @@ static void cc_save_psw(DisasContext *ctx, TCGv arg1, TCGv arg2, TCGv res, int m
         tmp_free(t1);
     }
 }
+
+static void cc_set_v_xor_cn(void)
+{
+    TCGv t1 = tmp_new();
+    TCGv t2 = tmp_new();
+    tcg_gen_rotli_tl(t1, cpu_reg_psw, CC_PSW_SHIFT_V - CC_PSW_SHIFT_C);
+    tcg_gen_rotri_tl(t2, cpu_reg_psw, CC_PSW_SHIFT_N - CC_PSW_SHIFT_V);
+    tcg_gen_xor_tl(t1, t1, t2);
+    tcg_gen_andi_tl(t1, t1, CC_PSW_MASK_V);
+    tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_V);
+    tcg_gen_or_tl(cpu_reg_psw, cpu_reg_psw, t1);
+    tmp_free(t1);
+    tmp_free(t2);
+}
+
 
 static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 {
@@ -510,7 +535,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     TCGv t3 = tmp_new();
                     load_srcdst(env, ctx, t1, t2, 0);
                     tcg_gen_sub_tl(t3, t1, t2);       // dest - src
-                    cc_save_psw(ctx, t1, t2, t3, CC_PSW_MASK_CVZN, CC_CMD_SUB);
+                    cc_save_psw(ctx, t2, t1, t3, CC_PSW_MASK_CVZN, CC_CMD_SUB);
                     tmp_free(t1);
                     tmp_free(t2);
                     tmp_free(t3);
@@ -568,7 +593,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                         tcg_gen_sub_tl(t3, t2, t1);
                     else                          // ADD
                         tcg_gen_add_tl(t3, t1, t2);
-                    cc_save_psw(ctx, t1, t2, t3, CC_PSW_MASK_CVZN, (ctx->byte) ? CC_CMD_SUB : CC_CMD_ADD);
+                    cc_save_psw(ctx, t1, t2, t3, CC_PSW_MASK_CVZN, (sub) ? CC_CMD_SUB : CC_CMD_ADD);
                     sign_ext16(t3);
                     store_dst(env, ctx, t3);
                     tmp_free(t1);
@@ -657,7 +682,16 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 
     switch (oppart) {
         case 000300:            // 0003 	SWAB 	Swap bytes: rotate 8 bits
-            tcg_gen_bswap16_tl(t, t);
+            {
+                TCGv t1 = tmp_new();
+                tcg_gen_bswap16_tl(t, t);
+                tcg_gen_andi_tl(t1, t, 0xff);
+                sign_ext8(t1);
+                cc_save_psw(ctx, t1, t1, t1, CC_PSW_MASK_ZN, CC_CMD_ANY);
+                cc_clr_c();
+                cc_clr_v();
+                tmp_free(t1);
+            }
             break;
         case 005000:            // 0050 	CLR(B) 	Clear: dest = 0
             tcg_gen_movi_tl(t, 0);
@@ -716,19 +750,78 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             }
             break;
         case 005600:            // 0056 	SBC(B) 	Subtract carry: dest −= C
-            tcg_gen_subi_tl(t, t, 1); // TODO sub carry not 1
-            printf("dumb for SBC\n");
+            {
+                TCGv t1 = tmp_new();
+                // CC_PSW_SHIFT_C == 0 -> without shifting
+                tcg_gen_andi_tl(t1, cpu_reg_psw, CC_PSW_MASK_C);
+                tcg_gen_sub_tl(t, t, t1);
+                tmp_free(t1);
+            }
             break;
         case 005700:            // 0057 	TST(B) 	Test: Load src, set flags only
+            if (ctx->byte)
+                tcg_gen_andi_tl(t, t, 0xff);
             cc_save_psw(ctx, t, t, t, CC_PSW_MASK_ZN, CC_CMD_ANY);
+//             if (ctx->pc == 0x90d6 + 2) {
+//                 TCGv t1 = tmp_new();
+//                 tcg_gen_mov_tl(cpu_regs[2], cpu_regs[1]);
+//                 tcg_gen_qemu_ld8u(cpu_regs[3], cpu_regs[1], ctx->memidx);
+//                 tmp_free(t1);
+//             }
             cc_clr_c();
             cc_clr_v();
             break;
         case 006000:            // 0060 	ROR(B) 	Rotate right 1 bit
-            tcg_gen_rotri_tl(t, t, 1); // TODO check
+            {
+                uint32_t shift = (ctx->byte) ? SIGN8_SHIFT : SIGN_SHIFT;
+                uint32_t mask = (ctx->byte) ? SIGN8_MASK : SIGN_MASK;
+                TCGv t1 = tmp_new();
+                TCGv t2 = tmp_new();
+
+                tcg_gen_andi_tl(t1, t, 1); // CC_PSW_SHIFT_C == 0 -> without shifting
+
+                tcg_gen_rotri_tl(t, t, 1);
+
+                tcg_gen_rotli_tl(t2, cpu_reg_psw, shift - CC_PSW_SHIFT_C);
+                tcg_gen_andi_tl(t2, t2, mask);
+                tcg_gen_andi_tl(t, t, ~mask);
+                tcg_gen_or_tl(t, t, t2);
+
+                tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_C);
+                tcg_gen_or_tl(cpu_reg_psw, cpu_reg_psw, t1);
+
+                tmp_free(t1);
+                tmp_free(t2);
+
+                cc_save_psw(ctx, t, t, t, CC_PSW_MASK_ZN, CC_CMD_ANY);
+                cc_set_v_xor_cn();
+            }
             break;
         case 006100:            // 0061 	ROL(B) 	Rotate left 1 bit
-            tcg_gen_rotli_tl(t, t, 1); // TODO check
+            {
+                uint32_t shift = (ctx->byte) ? SIGN8_SHIFT : SIGN_SHIFT;
+                uint32_t mask = (ctx->byte) ? SIGN8_MASK : SIGN_MASK;
+                TCGv t1 = tmp_new();
+                TCGv t2 = tmp_new();
+
+                tcg_gen_andi_tl(t1, t, mask);
+
+                tcg_gen_rotli_tl(t, t, 1); // TODO add cpu flags dependences
+
+                tcg_gen_andi_tl(t2, cpu_reg_psw, CC_PSW_MASK_C);
+                tcg_gen_andi_tl(t, t, ~1);
+                tcg_gen_or_tl(t, t, t2);
+
+                tcg_gen_rotri_tl(t1, t1, shift - CC_PSW_SHIFT_C);
+                tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_C);
+                tcg_gen_or_tl(cpu_reg_psw, cpu_reg_psw, t1);
+
+                tmp_free(t1);
+                tmp_free(t2);
+
+                cc_save_psw(ctx, t, t, t, CC_PSW_MASK_ZN, CC_CMD_ANY);
+                cc_set_v_xor_cn();
+            }
             break;
         case 006200:            // 0062 	ASR(B) 	Shift right: dest >>= 1
             {
@@ -783,7 +876,6 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
     }
     store_dst(env, ctx, t);
     tmp_free(t);
-
 
     return 1;
 }
@@ -951,6 +1043,7 @@ static inline int decode_nop(CPUK1801VM1State *env, DisasContext *ctx, int op)
     } else {
         switch (op) {
             case 0000005:
+                tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_Z); // ???
                 break;
             default:
                 return 0;
