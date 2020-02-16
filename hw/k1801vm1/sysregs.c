@@ -44,7 +44,7 @@ static uint64_t readfn(void *dev, hwaddr addr, unsigned int size)
         case 0114:      // IO port
             return 0;
         case 0116:      // system port
-            return (size == 1) ? 0x80 : 0x8000;
+            return (size == 1) ? 0x80 : 0x8080;
         default:
             printf("Unimplemented system register 0x%x >> (size=%d)\n", (unsigned int)addr, size); //TEST
     }

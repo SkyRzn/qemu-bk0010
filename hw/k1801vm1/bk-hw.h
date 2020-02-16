@@ -17,12 +17,12 @@
 #define MONITOR_ROM_NAME        "bk0010.monitor-rom"
 #define MONITOR_ROM_BASE        0100000
 #define MONITOR_ROM_SIZE        0120000 - MONITOR_ROM_BASE
-#define MONITOR_ROM_FILENAME    "monit10.rom"
+#define MONITOR_ROM_FILENAME    "rom/monit10.rom"
 
 #define BASIC_ROM_NAME          "bk0010.basic-rom"
 #define BASIC_ROM_BASE          0120000
 #define BASIC_ROM_SIZE          0200000 - BASIC_ROM_BASE
-#define BASIC_ROM_FILENAME      "basic10.rom"
+#define BASIC_ROM_FILENAME      "rom/basic10.rom"
 
 #define SYSREGS_NAME            "bk0010.sysregs"
 #define SYSREGS_BASE            0177600

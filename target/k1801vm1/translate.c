@@ -103,18 +103,17 @@ void k1801vm1_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     K1801VM1CPU *cpu = K1801VM1_CPU(cs);
     CPUK1801VM1State *env = &cpu->env;
-
     int i;
-    qemu_fprintf(f, "%c", (env->psw.bits.n) ? 'N' : ' ');
-    qemu_fprintf(f, "%c", (env->psw.bits.z) ? 'Z' : ' ');
-    qemu_fprintf(f, "%c", (env->psw.bits.v) ? 'V' : ' ');
-    qemu_fprintf(f, "%c", (env->psw.bits.c) ? 'C' : ' ');
-    qemu_fprintf(f, "  %04x: ", env->regs[7]);
+
+    qemu_fprintf(f, "%c", (env->psw.bits.n) ? 'N' : '_');
+    qemu_fprintf(f, "%c", (env->psw.bits.z) ? 'Z' : '_');
+    qemu_fprintf(f, "%c", (env->psw.bits.v) ? 'V' : '_');
+    qemu_fprintf(f, "%c", (env->psw.bits.c) ? 'C' : '_');
+    qemu_fprintf(f, "  %04x: [000000] ", env->regs[7]);
 
     for (i = 0; i < 7; i++)
-        qemu_fprintf(f, "r%d=%04x ", i, (env->regs[i] & 0xffffffff));//TEST
+        qemu_fprintf(f, "r%d=%04x ", i, (env->regs[i] & 0x0000ffff));
 
-    qemu_fprintf(f, " psw=%04x", env->psw.word);
     qemu_fprintf(f, "\n");
 
 }
@@ -264,9 +263,6 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
 
     if (ctx->byte) {
         tcg_gen_qemu_ld8u(t, addr, ctx->memidx);
-            if (ctx->pc == 0x90d6 + 2) {
-                tcg_gen_qemu_ld8u(cpu_regs[3], cpu_regs[1], ctx->memidx);
-            }
         sign_ext8(t);
     } else {
         tcg_gen_qemu_ld16u(t, addr, ctx->memidx);
@@ -295,7 +291,7 @@ static void load_srcdst(CPUK1801VM1State *env, DisasContext *ctx, TCGv src, TCGv
     load_operand(env, ctx, dst, 1, with_store);
 }
 
-static void store_dst(CPUK1801VM1State *env, DisasContext *ctx, TCGv dst)
+static void store_dst(CPUK1801VM1State *env, DisasContext *ctx, TCGv dst, int save)
 {
     TCGv addr = tmp_new();
     int mode, reg, prev_addition;
@@ -323,10 +319,12 @@ static void store_dst(CPUK1801VM1State *env, DisasContext *ctx, TCGv dst)
     if (prev_addition == 0 && arg->addition < 0)
         tcg_gen_addi_tl(cpu_regs[reg], cpu_regs[reg], arg->addition);
 
-    if (ctx->byte)
-        tcg_gen_qemu_st8(dst, addr, ctx->memidx);
-    else
-        tcg_gen_qemu_st16(dst, addr, ctx->memidx);
+    if (save) {
+        if (ctx->byte)
+            tcg_gen_qemu_st8(dst, addr, ctx->memidx);
+        else
+            tcg_gen_qemu_st16(dst, addr, ctx->memidx);
+    }
 
     if (prev_addition == 0 && arg->addition > 0)
         tcg_gen_addi_tl(cpu_regs[reg], cpu_regs[reg], arg->addition);
@@ -363,6 +361,16 @@ static void jmp_to_operand(CPUK1801VM1State *env, DisasContext *ctx, int addr)
             case 010:
                 tcg_gen_mov_tl(cpu_reg_pc, cpu_regs[reg]);
                 tcg_gen_andi_tl(cpu_reg_pc, cpu_reg_pc, 0xffff);
+                break;
+            case 070:
+                {
+                    TCGv tmp = tmp_new();
+                    tcg_gen_addi_tl(tmp, cpu_regs[2], cpu_ldsw_code(env, ctx->pc));
+                    tcg_gen_andi_tl(tmp, tmp, 0xffff);
+                    tcg_gen_qemu_ld16u(cpu_reg_pc, tmp, ctx->memidx);
+                    tmp_free(tmp);
+                    ctx->pc += 2;
+                }
                 break;
             default:
                 printf("!!!!!!!!!!!!! JUMP INCORRECT MODE %o (reg=%o)\n", mode, reg);
@@ -523,9 +531,10 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                 {
                     TCGv t1 = tmp_new();
                     load_src(env, ctx, t1, 1);
-                    store_dst(env, ctx, t1);
+                    store_dst(env, ctx, t1, 1);
                     cc_save_psw(ctx, t1, t1, t1, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     tmp_free(t1);
+                    cc_clr_v();
                 }
                 break;
             case 0020000: // CMP (B)
@@ -548,10 +557,10 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     load_srcdst(env, ctx, t1, t2, 0);
                     tcg_gen_and_tl(t2, t2, t1);
                     cc_save_psw(ctx, t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
-                    cc_clr_v();
                     sign_ext16(t2);
                     tmp_free(t1);
                     tmp_free(t2);
+                    cc_clr_v();
                 }
                 break;
             case 0040000: // BIC(B) (dest &= ~src)
@@ -563,7 +572,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     cc_save_psw(ctx, t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_clr_v();
                     sign_ext16(t2);
-                    store_dst(env, ctx, t2);
+                    store_dst(env, ctx, t2, 1);
                     tmp_free(t1);
                     tmp_free(t2);
                 }
@@ -574,7 +583,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     TCGv t2 = tmp_new();
                     load_srcdst(env, ctx, t1, t2, 1);
                     tcg_gen_or_tl(t2, t2, t1);
-                    store_dst(env, ctx, t2);
+                    store_dst(env, ctx, t2, 1);
                     cc_save_psw(ctx, t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_clr_v();
                     tmp_free(t1);
@@ -595,7 +604,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                         tcg_gen_add_tl(t3, t1, t2);
                     cc_save_psw(ctx, t1, t2, t3, CC_PSW_MASK_CVZN, (sub) ? CC_CMD_SUB : CC_CMD_ADD);
                     sign_ext16(t3);
-                    store_dst(env, ctx, t3);
+                    store_dst(env, ctx, t3, 1);
                     tmp_free(t1);
                     tmp_free(t2);
                     tmp_free(t3);
@@ -623,7 +632,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     ctx->byte = 0;
                     load_srcdst(env, ctx, t1, t2, 1);
                     tcg_gen_xor_tl(t2, t1, t2);
-                    store_dst(env, ctx, t2);
+                    store_dst(env, ctx, t2, 1);
                     cc_save_psw(ctx, t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_clr_v();
                     tmp_free(t1);
@@ -663,7 +672,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 
 static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 {
-    int oppart;
+    int oppart, save = 1;
 
     ctx->args[0].addr = op & 0000077;
     ctx->args[1].addr = ctx->args[0].addr;
@@ -759,6 +768,7 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             }
             break;
         case 005700:            // 0057 	TST(B) 	Test: Load src, set flags only
+            save = 0;
             if (ctx->byte)
                 tcg_gen_andi_tl(t, t, 0xff);
             cc_save_psw(ctx, t, t, t, CC_PSW_MASK_ZN, CC_CMD_ANY);
@@ -874,9 +884,8 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             printf("Unknown SOP\n");
             exit(-1);
     }
-    store_dst(env, ctx, t);
+    store_dst(env, ctx, t, save);
     tmp_free(t);
-
     return 1;
 }
 
@@ -950,13 +959,14 @@ static inline int decode_branch(CPUK1801VM1State *env, DisasContext *ctx, int op
             tmp_free(t);
         }
     } else if ((op & 0777000) == 0104000) { // EMT 	Emulator trap
+        int vector = (op & 0000400) ? 034 : 030;
         TCGv t = tmp_new();
         tcg_gen_movi_tl(cpu_reg_pc, ctx->pc);
         push(ctx, cpu_reg_psw);
         push(ctx, cpu_reg_pc);
-        tcg_gen_movi_i32(t, 030);   // EMT vector
+        tcg_gen_movi_i32(t, vector);        // EMT vector
         tcg_gen_qemu_ld16u(cpu_reg_pc, t, ctx->memidx);
-        tcg_gen_movi_i32(t, 032);   // EMT PSW
+        tcg_gen_movi_i32(t, vector + 2);    // EMT PSW
         tcg_gen_qemu_ld16u(cpu_reg_psw, t, ctx->memidx);
         tmp_free(t);
     } else if (op == 0000002) { // RTI 	Return from interrupt
@@ -967,7 +977,7 @@ static inline int decode_branch(CPUK1801VM1State *env, DisasContext *ctx, int op
     } else if ((op & 0777770) == 0200) { //      000020R RTS 	Return from subroutine
         reg = op & 0000007;
         if (reg != 7) {
-            tcg_gen_mov_tl(cpu_reg_pc, cpu_regs[reg]);
+            tcg_gen_andi_tl(cpu_reg_pc, cpu_regs[reg], 0xffff);
             pop(ctx, cpu_regs[reg]);
         } else
             pop(ctx, cpu_reg_pc);
