@@ -88,7 +88,7 @@ AGAUD:: MOV	TABTOP,R0
 4$:	MOV	R0,R4
 	RETURN
 ;
-ATLINE: .BYTE	40,367,40,363,364,362,357,353,345,40	; ¬ —“–Œ ≈
+ATLINE: .BYTE	40,367,40,363,364,362,357,353,345,40	; –í –°–¢–†–û–ö–ï
 	.EVEN
 ;
 ICMP::	SUB     (SP)+,(SP)+
@@ -991,7 +991,7 @@ CLRSTR::MOV	@SP,R0
 	BIC	#1,R0
 	MOV	R0,@SP
 	SUB	STRSIZ,R0	;
-	MOV	R0,R1		;¿Õ¿À»« I-√Œ ¿–√”Ã≈Õ“¿
+	MOV	R0,R1		;–ê–ù–ê–õ–ò–ó I-–ì–û –ê–†–ì–£–ú–ï–ù–¢–ê
 	ADD	ENDCOD,R0	;
 	CMP	R0,LENT
 	BHI	CLRERR
@@ -999,7 +999,7 @@ CLRSTR::MOV	@SP,R0
 	BR	CLR1
 CLRERR:	TRAP	7
 CLR::	CLR	R1
-;.............”—“¿ÕŒ¬ ¿ Œ¡À¿—“» ƒÀﬂ —“–Œ ..........
+;.............–£–°–¢–ê–ù–û–í–ö–ê –û–ë–õ–ê–°–¢–ò –î–õ–Ø –°–¢–†–û–ö..........
 CLR1:	MOV	STRREG,R0
 	MOV	#IRPS2-10,@#BREAKW
 	MOV	R0,FREBEG
@@ -1007,7 +1007,7 @@ CLR1:	MOV	STRREG,R0
 	MOV	LENT,LIMIT
 	MOV	LENT,CIKL
 	ADD     R1,ENDCOD
-;.........................—ƒ¬»√ Ã¿——»¬Œ¬...........
+;.........................–°–î–í–ò–ì –ú–ê–°–°–ò–í–û–í...........
 	ADD	STRSIZ,R0
 	MOV	ENDCOD,R3
 	MOV	R1,R5
@@ -1023,7 +1023,7 @@ CLR1:	MOV	STRREG,R0
 22$:	MOV	-(R1),-(R3)
 	CMP	R3,R0
 	BHI	22$
-;...................Œ◊»—“ ¿ œ≈–≈Ã≈ÕÕ€’.............
+;...................–û–ß–ò–°–¢–ö–ê –ü–ï–†–ï–ú–ï–ù–ù–´–•.............
 1$:	MOV	LENT,R2
 7$:	CMP	R2,TABTOP
 	BHIS	8$

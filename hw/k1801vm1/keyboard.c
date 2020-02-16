@@ -21,9 +21,9 @@
 
 const char KBD_TABLE[] = {
     0000, 0000, 0061, 0062, 0063, 0064, 0065, 0066, 0067, 0070, 0071, 0060, 0000, 0000, 0010, 0000,
-    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0012, 0000, 0101, 0000,
-    0102, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
-    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+    0121, 0127, 0105, 0122, 0124, 0131, 0125, 0111, 0117, 0120, 0000, 0000, 0012, 0000, 0101, 0123,
+    0104, 0106, 0107, 0110, 0112, 0113, 0114, 0000, 0042, 0000, 0000, 0000, 0132, 0130, 0103, 0126,
+    0102, 0116, 0115, 0000, 0000, 0000, 0000, 0000, 0000, 0040, 0000, 0000, 0000, 0000, 0000, 0000,
 };
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -58,32 +58,33 @@ static uint64_t readfn(void *dev, hwaddr addr, unsigned int size)
     int res = 0;
 
     pthread_mutex_lock(&mutex);
+    if (addr < 4)
+        s->state_reg &= ~HAS_DATA_MASK;
+
     switch (addr) {
         case 0:
-            s->state_reg &= ~HAS_DATA_MASK;
             if (size == 2)
                 res = s->state_reg;
             else
-                res = (s->state_reg >> 8) & 0xff;
+                res = s->state_reg & 0xff;
             break;
         case 1:
             if (size == 1)
-                res = s->state_reg & 0xff;
+                res = (s->state_reg >> 8) & 0xff;
             break;
         case 2:
             if (size == 2)
                 res = s->data_reg;
             else
-                res = (s->data_reg >> 8) & 0xff;
+                res = s->data_reg & 0xff;
             break;
         case 3:
             if (size == 1)
-                res = s->data_reg & 0xff;
+                res = (s->data_reg >> 8) & 0xff;
             break;
     }
+//     printf("KBD READ addr=0x%lx size=%d reg=0x%x val=0x%x\n", addr, size, s->data_reg, res);
     pthread_mutex_unlock(&mutex);
-    res = 12; //test
-    printf("KBD READ addr=0x%lx val=0x%x\n", addr, res);
     return res;
 }
 
@@ -106,8 +107,8 @@ static void writefn(void *dev, hwaddr addr, uint64_t value, unsigned int size)
             printf("!!! KB WRITE DATA REG\n");
             break;
     }
+//     printf("KBD WRITE addr=0x%lx val=0x%lx\n", addr, value);
     pthread_mutex_unlock(&mutex);
-    printf("KBD WRITE addr=0x%lx val=0x%lx\n", addr, value);
 }
 
 static const MemoryRegionOps ops = {
@@ -122,23 +123,30 @@ static void bk_keyboard_event(void *dev, int ch)
 
     if (s->state_reg & HAS_DATA_MASK)
         return;
+//     printf("m1=%x\n", HAS_DATA_MASK); // TEST
 
-    printf("KBD: Unimplemented keycode %d\n", ch);
-    return;
-    //     if (ch < 0 || ch > sizeof(KBD_TABLE) || KBD_TABLE[ch] == 0) {
-    //         printf("KBD: Unimplemented keycode %d\n", ch);
-    //         return;
-    //     }
+    if (ch > 127)
+        return;
+
+//     printf("=== 0x%x\n", ch);
+
+    if (ch < 0 || ch > sizeof(KBD_TABLE) || KBD_TABLE[ch] == 0) {
+        printf("KBD: Unimplemented keycode 0x%x\n", ch);
+        return;
+    }
 
     ch = KBD_TABLE[ch];
+
+    if (ch == 0)
+        return;
 
     pthread_mutex_lock(&mutex);
     s->data_reg = ch;
     s->state_reg |= HAS_DATA_MASK;
     irq_dis = s->state_reg & IRQ_DISBLED_MASK;
+//     printf("KBD output (oct) %o\n", ch);
     pthread_mutex_unlock(&mutex);
 
-    printf("KBD output (oct) %o\n", ch);
     if (!irq_dis)
         cpu_interrupt(cpu, CPU_INTERRUPT_HARD | CPU_INTERRUPT_KEYBOARD);
 }
