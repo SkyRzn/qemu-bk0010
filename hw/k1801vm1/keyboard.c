@@ -20,11 +20,27 @@
 #define HAS_DATA_MASK       1 << 7
 
 const char KBD_TABLE[] = {
-    0000, 0000, 0061, 0062, 0063, 0064, 0065, 0066, 0067, 0070, 0071, 0060, 0000, 0000, 0010, 0000,
-    0121, 0127, 0105, 0122, 0124, 0131, 0125, 0111, 0117, 0120, 0000, 0000, 0012, 0000, 0101, 0123,
-    0104, 0106, 0107, 0110, 0112, 0113, 0114, 0000, 0042, 0000, 0000, 0000, 0132, 0130, 0103, 0126,
-    0102, 0116, 0115, 0000, 0000, 0000, 0000, 0000, 0000, 0040, 0000, 0000, 0000, 0000, 0000, 0000,
+//        0     1     2     3     4     5     6     7     8     9     a     b     c     d     e     f
+/*00*/    0000, 0014, 0061, 0062, 0063, 0064, 0065, 0066, 0067, 0070, 0071, 0060, 0055, 0075, 0030, 0000,
+/*10*/    0121, 0127, 0105, 0122, 0124, 0131, 0125, 0111, 0117, 0120, 0133, 0135, 0012, 0000, 0101, 0123,
+/*20*/    0104, 0106, 0107, 0110, 0112, 0113, 0114, 0073, 0047, 0000, 0000, 0134, 0132, 0130, 0103, 0126,
+/*30*/    0102, 0116, 0115, 0000, 0000, 0000, 0000, 0000, 0017, 0040, 0000, 0000, 0000, 0000, 0000, 0000,
+/*40*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0010, 0000, 0031, 0000, 0000,
+/*50*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*60*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*70*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*80*/    0000, 0000, 0041, 0100, 0043, 0044, 0045, 0136, 0046, 0052, 0050, 0051, 0137, 0053, 0000, 0000,
+/*90*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0173, 0175, 0000, 0000, 0000, 0000,
+/*a0*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0072, 0042, 0000, 0000, 0174, 0000, 0000, 0000, 0000,
+/*b0*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0016, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*c0*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*d0*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*e0*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
+/*f0*/    0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000, 0000,
 };
+
+#define MOD_SHIFT   0x01
+#define MOD_E0      0x02
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static CPUState *cpu;
@@ -34,7 +50,7 @@ typedef struct {
     MemoryRegion sysregs;
     uint16_t state_reg;
     uint16_t data_reg;
-    uint16_t shift;
+    uint16_t mod;
 } BkKeyboardState;
 
 
@@ -116,35 +132,58 @@ static const MemoryRegionOps ops = {
     .write = writefn
 };
 
-static void bk_keyboard_event(void *dev, int ch)
+static void bk_keyboard_event(void *dev, int code)
 {
     BkKeyboardState *s = BK_KEYBOARD(dev);
-    int irq_dis;
+    int irq_dis, mod_e0 = 0;
+
+    printf("=== 0x%x\n", code);
+
+    switch (code) {
+        case 0x2a:
+        case 0x36:
+            s->mod |= MOD_SHIFT;
+            return;
+        case 0xaa:
+        case 0xb6:
+            s->mod &= ~MOD_SHIFT;
+            return;
+        case 0xe0:
+            s->mod |= MOD_E0;
+            return;
+    }
+
+    if (s->mod & MOD_E0) {
+        s->mod &= ~MOD_E0;
+        mod_e0 = 1;
+    }
 
     if (s->state_reg & HAS_DATA_MASK)
         return;
-//     printf("m1=%x\n", HAS_DATA_MASK); // TEST
 
-    if (ch > 127)
+    if (code > 0x80)
         return;
 
-//     printf("=== 0x%x\n", ch);
+    if (s->mod & MOD_SHIFT)
+        code += 0x80;
 
-    if (ch < 0 || ch > sizeof(KBD_TABLE) || KBD_TABLE[ch] == 0) {
-        printf("KBD: Unimplemented keycode 0x%x\n", ch);
+    if (mod_e0)
+        code += 0x80;        // TEST
+
+    if (code < 0 || code > sizeof(KBD_TABLE) || KBD_TABLE[code] == 0) {
+        printf("KBD: Unimplemented keycode 0x%x\n", code);
         return;
     }
 
-    ch = KBD_TABLE[ch];
+    code = KBD_TABLE[code];
 
-    if (ch == 0)
+    if (code == 0)
         return;
 
     pthread_mutex_lock(&mutex);
-    s->data_reg = ch;
+    s->data_reg = code;
     s->state_reg |= HAS_DATA_MASK;
     irq_dis = s->state_reg & IRQ_DISBLED_MASK;
-//     printf("KBD output (oct) %o\n", ch);
     pthread_mutex_unlock(&mutex);
 
     if (!irq_dis)
@@ -156,7 +195,7 @@ static void bk_keyboard_reset(DeviceState *dev)
     BkKeyboardState *s = BK_KEYBOARD(dev);
     s->state_reg = HAS_DATA_MASK;
     s->data_reg = 0;
-    s->shift = 0;
+    s->mod = 0;
 }
 
 static void bk_keyboard_realize(DeviceState *dev, Error **err)

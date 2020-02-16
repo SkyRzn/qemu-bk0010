@@ -1145,6 +1145,7 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 //             sleep(10);
 //             exit(-1);
 //         }
+        sleep(0);
 
         if (ctx.bstate != BS_BRANCH)
             tcg_gen_movi_tl(cpu_reg_pc, ctx.pc); // TEST
