@@ -35,5 +35,7 @@ extern void bk_display_init(void);
 extern void bk_sysregs_init(void);
 extern void bk_keyboard_init(void);
 
+extern uint64_t bk_display_sysregs_readfn(hwaddr addr, unsigned int size);
+extern void bk_display_sysregs_writefn(hwaddr addr, uint64_t value, unsigned int size);
 
 #endif

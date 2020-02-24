@@ -41,12 +41,14 @@ static uint64_t readfn(void *dev, hwaddr addr, unsigned int size)
 {
     switch (addr) {
         case 064:       // TODO display offset
+        case 065:       // TODO display offset
+            return bk_display_sysregs_readfn(addr, size);
         case 0114:      // IO port
             return 0;
         case 0116:      // system port
-            return (size == 1) ? 0x80 : 0x8080;
+            return (size == 1) ? 0x80 : 0x80a0;
         default:
-            printf("Unimplemented system register 0x%x >> (size=%d)\n", (unsigned int)addr, size); //TEST
+            printf("Unimplemented system register 0%o >> (size=%d)\n", 0177600+(unsigned int)addr, size); //TEST
     }
     return 0;
 }
@@ -56,11 +58,14 @@ static void writefn(void *dev, hwaddr addr, uint64_t value,
 {
     switch (addr) {
         case 064:       // TODO display offset
+        case 065:
+            bk_display_sysregs_writefn(addr, value, size);
+            break;
         case 0114:      // IO port
         case 0116:      // system port
             break;
         default:
-            printf("Unimplemented system register 0x%x << (val=0x%lx, size=%d)\n", (unsigned int)addr, value, size); //TEST
+            printf("Unimplemented system register 0%o << (val=0x%lx, size=%d)\n", 0177600+(unsigned int)addr, value, size); //TEST
     }
 }
 

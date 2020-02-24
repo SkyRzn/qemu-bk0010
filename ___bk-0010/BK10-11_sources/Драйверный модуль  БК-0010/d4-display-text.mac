@@ -478,7 +478,7 @@ PWREG [0x90f2]	(SP)+,R0
 [0x1]				CLR	NOMSIM			;  ФОРМ. AS
 [0x10]				JSR	PC,PFASIM
 
-[0x10]				MOV	FON,R0		;  СБРОС VP
+[0x1106]			MOV	FON,R0		;  СБРОС VP
 [0x10]				MOV	AS,R3
 [0x10]				MOV	DGPB,R2
 [0x10]				ASR	R2
@@ -488,7 +488,7 @@ PWREG [0x90f2]	(SP)+,R0
 [0x10]				SUB	DVPB,R3
 [0x10]			2$:	SOB	R2,1$
 
-[0x10]		PSBR1:	CLR	R5		;  ФОРМ. AGT
+[0x1122]	PSBR1:	CLR	R5		;  ФОРМ. AGT
 [0x10]				JSR	PC,PFAGT1
 [0x10]				CLR	SCTVS
 [0x10]				MOVB	NMPGT,MASPGT

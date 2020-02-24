@@ -41,6 +41,7 @@ const char KBD_TABLE[] = {
 
 #define MOD_SHIFT   0x01
 #define MOD_E0      0x02
+#define MOD_RUS     0x04
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static CPUState *cpu;
@@ -153,6 +154,12 @@ static void bk_keyboard_event(void *dev, int code)
             if (s->mod & MOD_E0)
                 s->mod &= ~MOD_E0;
             break;
+        case 0x38: // LAT
+            s->mod &= ~MOD_RUS;
+            break;
+        case 0xb8: // RUS
+            s->mod |= MOD_RUS;
+            break;
     }
 
     if (s->mod & MOD_E0) {
@@ -177,8 +184,8 @@ static void bk_keyboard_event(void *dev, int code)
         return;
     }
 
+//     printf("=== %x\n", code);
     code = KBD_TABLE[code];
-    printf("=== %o\n", code);
 
     if (code == 0)
         return;
