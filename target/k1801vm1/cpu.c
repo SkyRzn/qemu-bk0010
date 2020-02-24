@@ -8,7 +8,6 @@
 static void k1801vm1_cpu_set_pc(CPUState *cs, vaddr value)
 {
     K1801VM1CPU *cpu = K1801VM1_CPU(cs);
-
     cpu->env.regs[7] = value;
 }
 
@@ -69,7 +68,6 @@ static bool k1801vm1_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     K1801VM1CPU *cpu = K1801VM1_CPU(cs);
     CPUK1801VM1State *env = &cpu->env;
 
-    printf("int\n");
     if (interrupt_request & CPU_INTERRUPT_HARD) {
         if (interrupt_request & CPU_INTERRUPT_TGT_EXT_0) { // TODO replace to normal define
             env->regs[6] -= 2;

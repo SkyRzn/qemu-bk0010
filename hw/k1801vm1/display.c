@@ -10,7 +10,7 @@
 #include "ui/pixel_ops.h"
 
 
-typedef struct BochsDisplayState {
+typedef struct {
     SysBusDevice parent_obj;
     DisplaySurface *ds;
     QemuConsole *con;
@@ -20,16 +20,34 @@ typedef struct BochsDisplayState {
     int invalidate;
 } BKDisplayState;
 
+typedef struct {
+    uint8_t r: 1;           // reserved
+    uint8_t extended: 1;    // extended RAM mode
+} DisplayModeBits;
+
+typedef union {
+    uint8_t byte;
+    DisplayModeBits flags;
+} DisplayMode;
+
+typedef struct {
+    DisplayMode mode;
+    uint8_t offset;
+} DisplayRegister;
+
 #define TYPE_BK_DISPLAY "bk-display"
 #define TYPE_BK_DISPLAY_VRAM TYPE_BK_DISPLAY "-vram"
 #define TYPE_BK_DISPLAY_SYSREGS TYPE_BK_DISPLAY "-sysregs"
 #define BK_DISPLAY(obj) OBJECT_CHECK(BKDisplayState, (obj), TYPE_BK_DISPLAY)
 
+#define DEFAULT_OFFSET  0330
+
 #define WIDTH   512
 #define HEIGHT  256
 
 
-// static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static DisplayRegister display_register;
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 void bk_display_init(void)
@@ -39,14 +57,52 @@ void bk_display_init(void)
     qdev_init_nofail(dev);
 }
 
+uint64_t bk_display_sysregs_readfn(hwaddr addr, unsigned int size)
+{
+    uint64_t res = 0;
+    pthread_mutex_lock(&mutex);
+    if (addr == 064) {
+        if (size == 1)
+            res = display_register.mode.byte;
+        else if (size == 2)
+            res = display_register.offset + (display_register.mode.byte << 8);
+    } else if (addr == 065 && size == 1)
+        res = display_register.offset;
+    printf("!READ addr=0x%lx, val=0x%lx\n", addr, res);
+    pthread_mutex_unlock(&mutex);
+    return res;
+}
+
+void bk_display_sysregs_writefn(hwaddr addr, uint64_t value, unsigned int size)
+{
+    pthread_mutex_lock(&mutex);
+    if (addr == 064) {
+        if (size == 1)
+            display_register.mode.byte = value & 0xff;
+        else {
+            display_register.offset = value & 0xff;
+            display_register.mode.byte = (value & 0xff00) >> 8;
+        }
+    } else if (addr == 065 && size == 1)
+        display_register.offset = value &0xff;
+    printf("!WRITE addr=0x%lx, val=0x%lx\n", addr, value);
+    pthread_mutex_unlock(&mutex);
+}
+
 static void bk_display_draw_line(void *dev, uint8_t *d, const uint8_t *s,
                              int width, int pitch)
 {
     uint32_t *buf = (uint32_t *)d;
+    uint8_t src;
     int i, j;
+//     DisplayRegister reg;
+
+    pthread_mutex_lock(&mutex);
+//     reg = display_register;
+    pthread_mutex_unlock(&mutex);
 
     for (i = 0; i < WIDTH/8; i++) {
-        uint8_t src = s[i];
+        src = s[i];
         for (j = 0; j < 8; j++) {
             buf[i*8+j] = (src & 1) ? 0xffffffff : 0;
             src >>= 1;
@@ -68,7 +124,6 @@ static void bk_display_update(void *dev)
     framebuffer_update_display(surface, &s->vram_section, WIDTH, HEIGHT,
                                WIDTH/8, WIDTH*4, 0, 1, bk_display_draw_line,
                                s, &first, &last);
-
     dpy_gfx_update(s->con, 0, 0, WIDTH, HEIGHT);
 }
 
@@ -128,8 +183,9 @@ static void bk_display_class_init(ObjectClass *class, void *data)
     DeviceClass *dc = DEVICE_CLASS(class);
     dc->realize = bk_display_realize;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
+    display_register.offset = 0330;
+    display_register.mode.byte = 0;
 }
-
 
 static const TypeInfo bk_display_type_info = {
     .name           = TYPE_BK_DISPLAY,

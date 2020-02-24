@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "disasm.h"
 
 #include "qemu/osdep.h"
 #include "qemu/qemu-print.h"
@@ -103,19 +104,20 @@ void k1801vm1_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     K1801VM1CPU *cpu = K1801VM1_CPU(cs);
     CPUK1801VM1State *env = &cpu->env;
-    int i;
+    int i, opcode;
+
+    opcode = cpu_lduw_code(env, env->regs[7]);
 
     qemu_fprintf(f, "%c", (env->psw.bits.n) ? 'N' : '_');
     qemu_fprintf(f, "%c", (env->psw.bits.z) ? 'Z' : '_');
     qemu_fprintf(f, "%c", (env->psw.bits.v) ? 'V' : '_');
     qemu_fprintf(f, "%c", (env->psw.bits.c) ? 'C' : '_');
-    qemu_fprintf(f, "  %04x: [000000] ", env->regs[7]);
+    qemu_fprintf(f, "  %04x: [%06o] ", env->regs[7], opcode);
 
     for (i = 0; i < 7; i++)
         qemu_fprintf(f, "r%d=%04x ", i, (env->regs[i] & 0x0000ffff));
 
-    qemu_fprintf(f, "\n");
-
+    qemu_fprintf(f, " %s\n", k1801vm1_disasm(env, opcode));
 }
 
 void k1801vm1_translate_init(void)
@@ -353,7 +355,7 @@ static void jmp_to_operand(CPUK1801VM1State *env, DisasContext *ctx, int addr)
                 }
                 break;
             default:
-                printf("!!!!!!!!!!!!! JUMP INCORRECT MODE %o (reg=%o)\n", mode, reg);
+                printf("JUMP INCORRECT MODE %o (reg=%o)\n", mode, reg);
                 exit(-1); //TEST
         }
     } else {
@@ -362,10 +364,16 @@ static void jmp_to_operand(CPUK1801VM1State *env, DisasContext *ctx, int addr)
                 tcg_gen_mov_tl(cpu_reg_pc, cpu_regs[reg]);
                 tcg_gen_andi_tl(cpu_reg_pc, cpu_reg_pc, 0xffff);
                 break;
+            case 030:
+                tcg_gen_qemu_ld16u(cpu_reg_pc, cpu_regs[reg], ctx->memidx);
+                tcg_gen_andi_tl(cpu_reg_pc, cpu_reg_pc, 0xffff);
+                tcg_gen_addi_tl(cpu_regs[reg], cpu_regs[reg], 2);
+                tcg_gen_andi_tl(cpu_regs[reg], cpu_regs[reg], 0xffff);
+                break;
             case 070:
                 {
                     TCGv tmp = tmp_new();
-                    tcg_gen_addi_tl(tmp, cpu_regs[2], cpu_ldsw_code(env, ctx->pc));
+                    tcg_gen_addi_tl(tmp, cpu_regs[reg], cpu_ldsw_code(env, ctx->pc));
                     tcg_gen_andi_tl(tmp, tmp, 0xffff);
                     tcg_gen_qemu_ld16u(cpu_reg_pc, tmp, ctx->memidx);
                     tmp_free(tmp);
@@ -373,7 +381,7 @@ static void jmp_to_operand(CPUK1801VM1State *env, DisasContext *ctx, int addr)
                 }
                 break;
             default:
-                printf("!!!!!!!!!!!!! JUMP INCORRECT MODE %o (reg=%o)\n", mode, reg);
+                printf("JUMP INCORRECT MODE %o (reg=%o)\n", mode, reg);
                 exit(-1); //TEST
         }
     }
@@ -1053,7 +1061,7 @@ static inline int decode_nop(CPUK1801VM1State *env, DisasContext *ctx, int op)
     } else {
         switch (op) {
             case 0000005:
-                tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_Z); // ???
+                tcg_gen_andi_tl(cpu_reg_psw, cpu_reg_psw, ~CC_PSW_MASK_Z); // TODO RESET
                 break;
             default:
                 return 0;
@@ -1145,7 +1153,6 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 //             sleep(10);
 //             exit(-1);
 //         }
-        sleep(0);
 
         if (ctx.bstate != BS_BRANCH)
             tcg_gen_movi_tl(cpu_reg_pc, ctx.pc); // TEST

@@ -18,4 +18,4 @@
 #  <http://www.gnu.org/licenses/lgpl-2.1.html>
 #
 
-obj-y += translate.o cpu.o helper.o machine.o
+obj-y += translate.o cpu.o helper.o machine.o disasm.o

@@ -358,7 +358,7 @@ PARAM:	MOV	PFACT,R0
 	SOB	R1,1$
 	JMP	@(4)+
 ;
-DCONST::MOV     (R4)+,-(SP)
+DCONST::MOV     (R4)+,-(SP)   [0xdc6a]
         MOV     (R4)+,-(SP)
 SCONST::MOV     (R4)+,-(SP)
 ICONST::MOV     (R4)+,-(SP)
@@ -757,7 +757,7 @@ FROMD:	MOV	(SP)+,2(SP)
 	MOV	(SP)+,2(SP)
 	JMP	@(R4)+
 ;
-E1:	
+E1:
 E2:
 E3:	TRAP	6
 	TRAP	5
@@ -1745,4 +1745,3 @@ $EREND:	JMP	@(R4)+
 ;
 .ENDC
 	.END
- 
