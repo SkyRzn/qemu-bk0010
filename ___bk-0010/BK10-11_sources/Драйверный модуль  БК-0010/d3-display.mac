@@ -293,32 +293,32 @@ KFSIM:	RTS	PC
 ;    ** 2.3. ФОРМИРОВАНИЕ СИМВОЛЬНОГО КУРСОРА **
 ;    -------------------------------------------
 
-PFSK:				;  ФОРМИРОВАНИЕ И СТИРАНИЕ СИМВ. КУРС.
-PSTSK:	TSTB	PRGAHK		;  ПРИЗНАК ГАШ. КУРС.
-	BNE	KFSK
+[0x8692]PFSK:				;  ФОРМИРОВАНИЕ И СТИРАНИЕ СИМВ. КУРС.
+		PSTSK:	TSTB	PRGAHK		;  ПРИЗНАК ГАШ. КУРС.
+			BNE	KFSK
 
-	MOV	AS,R3		;  ПОДГ. ПАРАМ.
-	MOV	#KTVSS,R2
+			MOV	AS,R3		;  ПОДГ. ПАРАМ.
+			MOV	#KTVSS,R2
 
-	TSTB	PRCW		;  ЧБ/ЦВ
-	BNE	1$
+[0x86a0]	TSTB	PRCW		;  ЧБ/ЦВ
+			BNE	1$
 
-	MOV	#377,R5		;  ЧЕРНО-БЕЛЫЙ
-	ASR	R3
-	BCC	2$
-	SWAB	R5
-2$:	ASL	R3
-	BR	3$
+			MOV	#377,R5		;  ЧЕРНО-БЕЛЫЙ
+[0x86aa]	ASR	R3
+			BCC	2$
+			SWAB	R5
+		2$:	ASL	R3
+			BR	3$
 
-1$:	MOV	MASCW,R5	;  ЦВЕТНОЙ
-	MOV	FON,R4
-	XOR	R4,R5
+		1$:	MOV	MASCW,R5	;  ЦВЕТНОЙ
+			MOV	FON,R4
+			XOR	R4,R5
 
-3$:	XOR	R5,(R3)		;  ИЗМЕНЕНИЕ МАРКЕРА
-	JSR	PC,PFTAN
-	SOB	R2,3$
+		3$:	XOR	R5,(R3)		;  ИЗМЕНЕНИЕ МАРКЕРА
+			JSR	PC,PFTAN
+			SOB	R2,3$
 
-KFSK:	RTS	PC
+		KFSK:	RTS	PC
 
 
 
@@ -1098,68 +1098,68 @@ PFAGT1:	MOV	R5,AGTVP	;- AGTVP
 ;    ** 6.1.2. ФОРМИРОВАНИЕ ГРАФИЧЕСКОГО КУРСОРА **
 ;    ---------------------------------------------
 
-PFGK:				;  ФОРМИРОВАНИЕ И СТИРАНИЕ КУРСОРА
-PSTGK:	TSTB	PRGAHK		;  ПРОВ. ПРИЗНАКА
-	BNE	KFGK
+		PFGK:				;  ФОРМИРОВАНИЕ И СТИРАНИЕ КУРСОРА
+		PSTGK:	TSTB	PRGAHK		;  ПРОВ. ПРИЗНАКА
+			BNE	KFGK
 
-	MOV	MASCW,R4	;  ФОРМИРОВАНИЕ МАСКИ ТОЧКИ
-	MOV	FON,R5
-	XOR	R5,R4
-	CLR	R5
-	BISB	MASPGT,R5
-	COM	R5
-	BIC	R5,R4
+			MOV	MASCW,R4	;  ФОРМИРОВАНИЕ МАСКИ ТОЧКИ
+			MOV	FON,R5
+			XOR	R5,R4
+			CLR	R5
+			BISB	MASPGT,R5
+			COM	R5
+			BIC	R5,R4
 
-	MOV	AGT,R3		;  ПОДГ. АДРЕСОВ
-	ASR	R3
-	BCC	1$
-	SWAB	R4
-1$:	ASL	R3
-	MOV	R3,R1
-	SUB	#300,R3
-	CMP	R3,ANVP
-	BHIS	11$
-	ADD	DVPB,R3
+			MOV	AGT,R3		;  ПОДГ. АДРЕСОВ
+			ASR	R3
+			BCC	1$
+			SWAB	R4
+		1$:	ASL	R3
+			MOV	R3,R1
+			SUB	#300,R3
+			CMP	R3,ANVP
+			BHIS	11$
+			ADD	DVPB,R3
 
-11$:	MOV	#7,R2		;  ФОРМИРОВАНИЕ ВЕРТ. ЧЕРТЫ
-2$:	XOR	R4,(R3)
-	JSR	PC,PFTAN
-	SOB	R2,2$
+		11$:	MOV	#7,R2		;  ФОРМИРОВАНИЕ ВЕРТ. ЧЕРТЫ
+		2$:	XOR	R4,(R3)
+			JSR	PC,PFTAN
+			SOB	R2,2$
 
-	MOV	#3,R2		;  СДВИГ МАСКИ ВЛЕВО
-	CLC
-	MOVB	PRCW,R5
-	BEQ	3$
-	ASL	R2
-3$:	ROR	R4		;- СДВИГ
-	BCC	4$
-	DEC	R1
-	ROR	R4
-4$:	SOB	R2,3$
-	BIC	#1,R1
-	CMP	R1,ANVP
-	BHI	41$
-	ADD	DVPB,R1
+			MOV	#3,R2		;  СДВИГ МАСКИ ВЛЕВО
+			CLC
+			MOVB	PRCW,R5
+			BEQ	3$
+			ASL	R2
+		3$:	ROR	R4		;- СДВИГ
+			BCC	4$
+			DEC	R1
+			ROR	R4
+		4$:	SOB	R2,3$
+			BIC	#1,R1
+			CMP	R1,ANVP
+			BHI	41$
+			ADD	DVPB,R1
 
-41$:	MOV	#7,R2		;  ФОРМИРОВАНИЕ ГОРИЗ.ЧЕРТЫ
-7$:	XOR	R4,(R1)
-	ROL	R4
-	BCC	5$
-	JSR	PC,PFGK1
-5$:	MOV	R5,R5
-	BEQ	6$
-	ROL	R4
-	BCC	6$
-	JSR	PC,PFGK1
-6$:	SOB	R2,7$
-KFGK:	RTS	PC
+		41$:	MOV	#7,R2		;  ФОРМИРОВАНИЕ ГОРИЗ.ЧЕРТЫ
+		7$:	XOR	R4,(R1)
+			ROL	R4
+			BCC	5$
+			JSR	PC,PFGK1
+		5$:	MOV	R5,R5
+			BEQ	6$
+			ROL	R4
+			BCC	6$
+			JSR	PC,PFGK1
+		6$:	SOB	R2,7$
+		KFGK:	RTS	PC
 
-PFGK1:	ADD	#2,R1		;  ПРИРАЩЕНИЕ АДРЕСА
-	BPL	1$
-	SUB	DVPB,R1
-1$:	SEC
-	ROL	R4
-	RTS	PC
+		PFGK1:	ADD	#2,R1		;  ПРИРАЩЕНИЕ АДРЕСА
+			BPL	1$
+			SUB	DVPB,R1
+		1$:	SEC
+			ROL	R4
+			RTS	PC
 
 
 ;    --------------------------------
