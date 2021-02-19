@@ -57,6 +57,9 @@ static const char *operand(int addr)
         case 4:
             snprintf(res, sizeof(res), "-(%s)", regname(reg));
             break;
+        case 5:
+            snprintf(res, sizeof(res), "-@(%s)", regname(reg));
+            break;
         case 6:
             if (reg == 7) {
                 addr = (pc + 2 + cpu_lduw_code(env, pc)) & 0xffff;
@@ -64,6 +67,15 @@ static const char *operand(int addr)
             } else
                 snprintf(res, sizeof(res), "%o(%s)", cpu_lduw_code(env, pc), regname(reg));
             pc += 2;
+            break;
+        case 7:
+            if (reg == 7) {
+                addr = (pc + 2 + cpu_lduw_code(env, pc)) & 0xffff;
+                snprintf(res, sizeof(res), "@%o", addr);
+            } else
+                snprintf(res, sizeof(res), "@%o(%s)", cpu_lduw_code(env, pc), regname(reg));
+            pc += 2;
+            break;
     }
 
     return res;
@@ -211,7 +223,7 @@ static int sop(int opcode, char *buf, int size)
 static const char *branch_addr(int addr)
 {
     int mode, reg;
-    static char res[8];
+    static char res[16];
 
     mode = addr & 070;
     reg =  addr & 007;
@@ -236,6 +248,8 @@ static const char *branch_addr(int addr)
                 return res;
             case 070:
                 addr = (env->regs[reg] + cpu_lduw_code(env, pc)) & 0xffff;
+                snprintf(res, sizeof(res), "@%o(r%d)", addr, reg);
+                return res;
                 break;
             default:
                 printf("DISASM JUMP INCORRECT MODE %o (reg=%o)\n", mode, reg);
