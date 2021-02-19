@@ -4,8 +4,8 @@
 from operation import Oplist
 import sys, os
 
-START = 0x825e
-START = 0x80bc
+START = 0xccee
+#START = 0xd114
 
 def main():
 	myList = Oplist('000_new', 'MY', START)
@@ -25,15 +25,18 @@ def main():
 			break
 
 		if my != em:
+			if myList[i].regs(7) == 0x84a4:
+				i += 1
+				continue
 			print('----------- my=%d' % (len(myList)+myList.skipped()))
 			for j in range(LINES):
 				n = i - LINES + j + 1
-				print('%d: %s' % (myList.srcInd(n), myList[n].line()))
+				print('%d: %s' % (myList.srcInd(n)+myList.skipped(), myList[n].line()))
 			print('')
 			print('----------- em=%d' % (len(emList)+emList.skipped()))
 			for j in range(LINES):
 				n = i - LINES + j + 1
-				print('%d: %s' % (emList.srcInd(n), emList[n].line()))
+				print('%d: %s' % (emList.srcInd(n)+emList.skipped(), emList[n].line()))
 			break
 		i += 1
 

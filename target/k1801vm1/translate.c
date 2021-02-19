@@ -295,7 +295,6 @@ static void load_srcdst(CPUK1801VM1State *env, DisasContext *ctx, TCGv src, TCGv
 
 static void store_dst(CPUK1801VM1State *env, DisasContext *ctx, TCGv dst, int save)
 {
-    TCGv addr = tmp_new();
     int mode, reg, prev_addition;
     OpArgument *arg = &ctx->args[1];
 
@@ -304,15 +303,19 @@ static void store_dst(CPUK1801VM1State *env, DisasContext *ctx, TCGv dst, int sa
 
     if (mode == 0) {
         if (reg == 7) {
+//             tcg_gen_andi_tl(dst, dst, (ctx->byte) ? 0xff : 0xffff);
+//             tcg_gen_andi_tl(cpu_reg_pc, cpu_reg_pc, (ctx->byte) ? 0xff00 : 0x0000);
+//             tcg_gen_or_tl(cpu_reg_pc, cpu_reg_pc, dst);
             tcg_gen_andi_tl(cpu_reg_pc, dst, 0xffff);
             tcg_gen_exit_tb(NULL, 0);
             ctx->bstate = BS_BRANCH;
         } else {
             tcg_gen_andi_tl(cpu_regs[reg], dst, 0x8000ffff);
         }
-        tmp_free(addr);
         return;
     }
+
+    TCGv addr = tmp_new();
 
     prev_addition = arg->addition;
 
@@ -432,12 +435,16 @@ static void cc_save_psw(DisasContext *ctx, TCGv arg1, TCGv arg2, TCGv res, int m
     carry_mask = (ctx->byte) ? CARRY8_MASK : CARRY_MASK;
     carry_shift = (ctx->byte) ? CARRY8_SHIFT : CARRY_SHIFT;
 
+
     if (mask & CC_PSW_MASK_Z) {
         TCGv t1 = tmp_new();
+        TCGv t2 = tmp_new();
         TCGv zero = tcg_const_tl(0);
         tcg_gen_ori_tl(t1, cpu_reg_psw, CC_PSW_MASK_Z);
-        tcg_gen_movcond_tl(TCG_COND_EQ, cpu_reg_psw, res, zero, t1, cpu_reg_psw);
+        tcg_gen_andi_tl(t2, res, (ctx->byte) ? 0xff : 0xffff);
+        tcg_gen_movcond_tl(TCG_COND_EQ, cpu_reg_psw, t2, zero, t1, cpu_reg_psw);
         tmp_free(t1);
+        tmp_free(t2);
         tmp_free(zero);
     }
     if (mask & CC_PSW_MASK_N) {
@@ -456,12 +463,14 @@ static void cc_save_psw(DisasContext *ctx, TCGv arg1, TCGv arg2, TCGv res, int m
         } else if (cmd == CC_CMD_SUB) {
             TCGv zero = tcg_const_tl(0);
             TCGv t2 = tmp_new();
+            TCGv t3 = tmp_new();
+            TCGv t4 = tmp_new();
 
-            tcg_gen_andi_tl(arg1, arg1, (ctx->byte) ? 0xff : 0xffff);
-            tcg_gen_andi_tl(arg2, arg2, (ctx->byte) ? 0xff : 0xffff);
+            tcg_gen_andi_tl(t3, arg1, (ctx->byte) ? 0xff : 0xffff);
+            tcg_gen_andi_tl(t4, arg2, (ctx->byte) ? 0xff : 0xffff);
 
             tcg_gen_movi_tl(t2, carry_mask);
-            tcg_gen_movcond_tl(TCG_COND_GT, t1, arg1, arg2, t2, zero);
+            tcg_gen_movcond_tl(TCG_COND_GT, t1, t3, t4, t2, zero);
             tmp_free(zero);
 
             tmp_free(t2);
@@ -535,14 +544,16 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
         ctx->args[0].addr = (op & 0007700) >> 6;
 
         switch (oppart) {
-            case 0010000: // MOV
+            case 0010000: // MOV (B)
                 {
                     TCGv t1 = tmp_new();
                     load_src(env, ctx, t1, 1);
-                    store_dst(env, ctx, t1, 1);
                     cc_save_psw(ctx, t1, t1, t1, CC_PSW_MASK_ZN, CC_CMD_ANY);
-                    tmp_free(t1);
                     cc_clr_v();
+                    if (ctx->byte && (ctx->args[1].addr & 070) == 0)
+                        sign_ext8(t1);
+                    store_dst(env, ctx, t1, 1);
+                    tmp_free(t1);
                 }
                 break;
             case 0020000: // CMP (B)
@@ -551,6 +562,8 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     TCGv t2 = tmp_new();
                     TCGv t3 = tmp_new();
                     load_srcdst(env, ctx, t1, t2, 0);
+                    tcg_gen_andi_tl(t1, t1, (ctx->byte) ? 0xff : 0xffff);
+                    tcg_gen_andi_tl(t2, t2, (ctx->byte) ? 0xff : 0xffff);
                     tcg_gen_sub_tl(t3, t1, t2);       // dest - src
                     cc_save_psw(ctx, t2, t1, t3, CC_PSW_MASK_CVZN, CC_CMD_SUB);
                     tmp_free(t1);
@@ -590,10 +603,12 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     TCGv t1 = tmp_new();
                     TCGv t2 = tmp_new();
                     load_srcdst(env, ctx, t1, t2, 1);
+                    if (ctx->byte)
+                        tcg_gen_andi_tl(t1, t1, 0xff);
                     tcg_gen_or_tl(t2, t2, t1);
-                    store_dst(env, ctx, t2, 1);
                     cc_save_psw(ctx, t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_clr_v();
+                    store_dst(env, ctx, t2, 1);
                     tmp_free(t1);
                     tmp_free(t2);
                 }
@@ -640,9 +655,9 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
                     ctx->byte = 0;
                     load_srcdst(env, ctx, t1, t2, 1);
                     tcg_gen_xor_tl(t2, t1, t2);
-                    store_dst(env, ctx, t2, 1);
                     cc_save_psw(ctx, t1, t2, t2, CC_PSW_MASK_ZN, CC_CMD_ANY);
                     cc_clr_v();
+                    store_dst(env, ctx, t2, 1);
                     tmp_free(t1);
                     tmp_free(t2);
                 }
@@ -711,7 +726,7 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
             }
             break;
         case 005000:            // 0050 	CLR(B) 	Clear: dest = 0
-            tcg_gen_movi_tl(t, 0);
+            tcg_gen_andi_tl(t, t, (ctx->byte) ? 0xff00 : 0x0000);
             tcg_gen_movi_tl(cpu_reg_psw, 0b0100);
             break;
         case 005100:            // 0051 	COM(B) 	Complement: dest = ~dest
@@ -747,10 +762,13 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
         case 005400:            // 0054 	NEG(B) 	Negate: dest = −dest
             {
                 TCGv t1 = tmp_new();
+                TCGv t2 = tmp_new();
                 tcg_gen_mov_tl(t1, t);
                 tcg_gen_neg_tl(t, t);
-                cc_save_psw(ctx, t1, t1, t, CC_PSW_MASK_CVZN, CC_CMD_SUB); // TODO
+                tcg_gen_movi_tl(t2, 0);
+                cc_save_psw(ctx, t1, t2, t, CC_PSW_MASK_CVZN, CC_CMD_SUB); // TODO
                 tmp_free(t1);
+                tmp_free(t2);
             }
             break;
         case 005500:            // 0055 	ADC(B) 	Add carry: dest += C

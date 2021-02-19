@@ -43,27 +43,27 @@ class Operation:
 		if int(reg) == 2:
 			self._regs[int(reg)] = 0 # TEST  incorrect reference emulator behaviour
 
-	def regs(reg=None):
+	def regs(self, reg=None):
 		if reg == None:
 			return self._regs
 		return self._regs[reg]
 
-	def flags():
+	def flags(self):
 		return self._flags
 
 	def line(self):
 		return self._line
 
 class Oplist:
-	def __init__(self, fn, name, startOpcode=None):
+	def __init__(self, fn, name, startOpcode=None, startOffset=0):
 		self._name = name
 		self._lines = []
 		self._skipped = 0
 
 		self.__iter__() # reset
-		self.load(fn, startOpcode)
+		self.load(fn, startOpcode, startOffset)
 
-	def load(self, fn, startOpcode=None):
+	def load(self, fn, startOpcode=None, startOffset=0):
 		with open(fn, 'r') as f:
 			self._lines = f.readlines()
 		if startOpcode:
@@ -73,6 +73,11 @@ class Oplist:
 					self._lines = self._lines[i:]
 					self._skipped = i
 					return
+
+		elif startOffset > 0:
+			print('%s: skipped %d lines' % (self._name, startOffset))
+			self._lines = self._lines[startOffset:]
+			self._skipped = startOffset
 
 	def __iter__(self):
 		self._offset = 0
