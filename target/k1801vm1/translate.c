@@ -23,6 +23,7 @@
 
 #include "cpu.h"
 #include "exec/exec-all.h"
+#include "tcg.h"
 #include "tcg-op.h"
 
 enum {
@@ -116,6 +117,8 @@ void k1801vm1_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 
     for (i = 0; i < 7; i++)
         qemu_fprintf(f, "r%d=%04x ", i, (env->regs[i] & 0x0000ffff));
+
+    qemu_fprintf(f, "r6@=%04x ", cpu_lduw_code(env, (env->regs[6] & 0x0000ffff))); // TEST stack content
 
     qemu_fprintf(f, " %s\n", k1801vm1_disasm(env, opcode));
 }
@@ -250,9 +253,9 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
     reg = arg->addr & 007;
 
     if (mode == 0) {
-        if (reg == 7) {
+        if (reg == 7)
             tcg_gen_movi_tl(t, ctx->pc); // TODO offset?
-        } else
+        else
             tcg_gen_mov_tl(t, cpu_regs[reg]);
         tmp_free(addr);
         return;
@@ -270,7 +273,6 @@ static void load_operand(CPUK1801VM1State *env, DisasContext *ctx, TCGv t, int a
         tcg_gen_qemu_ld16u(t, addr, ctx->memidx);
         sign_ext16(t);
     }
-
 
     if (arg->addition > 0) {
         if (with_store)
@@ -546,6 +548,7 @@ static inline int decode_dop(CPUK1801VM1State *env, DisasContext *ctx, int op)
         switch (oppart) {
             case 0010000: // MOV (B)
                 {
+                    // reproduce CPU bug - https://habr.com/ru/post/471020/
                     TCGv t1 = tmp_new();
                     load_src(env, ctx, t1, 1);
                     cc_save_psw(ctx, t1, t1, t1, CC_PSW_MASK_ZN, CC_CMD_ANY);
@@ -707,7 +710,7 @@ static inline int decode_sop(CPUK1801VM1State *env, DisasContext *ctx, int op)
 
     TCGv t = tmp_new();
 
-    load_src(env, ctx, t, (oppart != 006400));
+    load_operand(env, ctx, t, 0, (oppart != 006400));
 
     ctx->args[0].code_size = 0;
     ctx->args[1].addition = ctx->args[0].addition;
@@ -1167,7 +1170,7 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 
 // SINGLE STEP TEST
 
-//         if (ctx.pc == 0xb952+) {     // TEST
+//         if (ctx.pc == 0xb952) {     // TEST
 //             sleep(10);
 //             exit(-1);
 //         }
