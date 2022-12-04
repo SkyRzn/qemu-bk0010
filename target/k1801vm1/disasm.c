@@ -240,14 +240,14 @@ static const char *branch_addr(int addr)
     } else {
         switch (mode) {
             case 010:
-                snprintf(res, sizeof(res), "(%s)", regname(addr));
+                snprintf(res, sizeof(res), "(%s)", regname(reg));
                 return res;
             case 030:
 //                 addr = cpu_lduw_code(env, env->regs[reg] & 0xffff);
                 snprintf(res, sizeof(res), "@(%s)+", regname(reg));
                 return res;
             case 070:
-                addr = (env->regs[reg] + cpu_lduw_code(env, pc)) & 0xffff;
+                addr = cpu_lduw_code(env, pc) & 0xffff;
                 snprintf(res, sizeof(res), "@%o(r%d)", addr, reg);
                 return res;
                 break;
@@ -279,7 +279,10 @@ static int branch(int opcode, char *buf, int size)
 
     oppart = opcode & 0777400;
     addr = opcode & 0377;
+    if (addr & 0200)
+        addr = addr - 0x100;
     addr <<= 1;
+
     switch (oppart) {
         case 0000400:
             op = "br";
